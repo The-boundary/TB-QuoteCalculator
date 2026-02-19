@@ -23,7 +23,7 @@ export function VersionCard({ version, quoteId }: VersionCardProps) {
   return (
     <Card
       className="cursor-pointer transition-colors hover:border-sb-brand/50"
-      onClick={() => navigate(`/quotes/${quoteId}/versions/${version.id}/edit`)}
+      onClick={() => navigate(`/quotes/${quoteId}/versions/${version.id}/build`)}
     >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react';
-import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -585,7 +584,7 @@ export function RateCardsPage() {
   }
 
   return (
-    <AppShell>
+    <>
       <PageHeader
         title="Rate Cards"
         description="Manage production rate cards"
@@ -629,6 +628,6 @@ export function RateCardsPage() {
         onOpenChange={setDialogOpen}
         rateCard={editingCard}
       />
-    </AppShell>
+    </>
   );
 }

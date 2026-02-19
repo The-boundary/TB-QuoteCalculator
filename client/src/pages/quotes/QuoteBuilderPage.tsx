@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +14,7 @@ import { ShotBreakdownTable } from './builder/ShotBreakdownTable';
 import { AddShotPicker } from './builder/AddShotPicker';
 import { PostProductionSection } from './builder/PostProductionSection';
 import { TotalsSummary } from './builder/TotalsSummary';
+import { BudgetSuggestions } from './builder/BudgetSuggestions';
 
 const DURATION_PRESETS = [15, 30, 60, 90, 120];
 
@@ -66,28 +66,28 @@ export function QuoteBuilderPage() {
 
   if (quoteLoading || rateCardLoading) {
     return (
-      <AppShell>
+      <>
         <div className="flex items-center justify-center py-20">
           <div className="text-sm text-muted-foreground">Loading builder...</div>
         </div>
-      </AppShell>
+      </>
     );
   }
 
   if (!quote) {
     return (
-      <AppShell>
+      <>
         <div className="flex items-center justify-center py-20">
           <div className="text-sm text-muted-foreground">Quote not found.</div>
         </div>
-      </AppShell>
+      </>
     );
   }
 
   const versionNumber = existingVersion?.version_number ?? (quote.versions.length + 1);
 
   return (
-    <AppShell>
+    <>
       {/* Header */}
       <PageHeader
         title={`${quote.project_name} — Version ${versionNumber}`}
@@ -178,6 +178,13 @@ export function QuoteBuilderPage() {
           remaining={builder.remaining}
         />
 
+        {/* Budget Suggestions */}
+        <BudgetSuggestions
+          remaining={builder.remaining}
+          rateCardItems={rateCard?.items ?? []}
+          existingShotTypes={existingShotTypes}
+        />
+
         {/* Notes */}
         <Card>
           <CardHeader className="pb-3">
@@ -209,6 +216,6 @@ export function QuoteBuilderPage() {
           </Button>
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

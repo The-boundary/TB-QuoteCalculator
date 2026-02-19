@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { Plus, Search } from 'lucide-react';
-import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,7 +48,7 @@ export function QuotesListPage() {
   }, [quotes, statusFilter, search]);
 
   return (
-    <AppShell>
+    <>
       <PageHeader
         title="Quotes"
         description="Film production quotes"
@@ -127,6 +126,6 @@ export function QuotesListPage() {
       </div>
 
       <CreateQuoteDialog open={dialogOpen} onOpenChange={setDialogOpen} />
-    </AppShell>
+    </>
   );
 }

@@ -1,6 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ChevronDown, Plus } from 'lucide-react';
-import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -83,12 +82,12 @@ export function QuoteDetailPage() {
       })),
     });
 
-    navigate(`/quotes/${id}/versions/${newVersion.id}/edit`);
+    navigate(`/quotes/${id}/versions/${newVersion.id}/build`);
   }
 
   if (isLoading) {
     return (
-      <AppShell>
+      <>
         <div className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-2">
@@ -106,15 +105,15 @@ export function QuoteDetailPage() {
             ))}
           </div>
         </div>
-      </AppShell>
+      </>
     );
   }
 
   if (!quote) {
     return (
-      <AppShell>
+      <>
         <div className="text-sm text-muted-foreground">Quote not found.</div>
-      </AppShell>
+      </>
     );
   }
 
@@ -123,7 +122,7 @@ export function QuoteDetailPage() {
   const sortedVersions = [...quote.versions].sort((a, b) => b.version_number - a.version_number);
 
   return (
-    <AppShell>
+    <>
       <div className="space-y-6">
         <Button
           variant="ghost"
@@ -192,6 +191,6 @@ export function QuoteDetailPage() {
           </div>
         )}
       </div>
-    </AppShell>
+    </>
   );
 }
