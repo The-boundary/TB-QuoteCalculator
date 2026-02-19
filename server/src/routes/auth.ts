@@ -1,10 +1,12 @@
 import { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
+
 import { logger } from '../utils/logger.js';
 import { getAuthSupabaseClient } from '../services/supabase.js';
 
 const router = Router();
+
 const APP_SLUG = process.env.APP_SLUG || 'quote-calculator';
 
 function requireEnv(name: string): string {
@@ -18,14 +20,19 @@ function getGotrueUrl(): string {
 }
 
 function base64Url(buf: Buffer): string {
-  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  return buf
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
 }
 
 function sha256Base64Url(input: string): string {
-  return base64Url(crypto.createHash('sha256').update(input).digest());
+  const hash = crypto.createHash('sha256').update(input).digest();
+  return base64Url(hash);
 }
 
-function createPkce() {
+function createPkce(): { codeVerifier: string; codeChallenge: string } {
   const codeVerifier = base64Url(crypto.randomBytes(32));
   const codeChallenge = sha256Base64Url(codeVerifier);
   return { codeVerifier, codeChallenge };
@@ -37,11 +44,11 @@ function cookieDomain(): string | undefined {
 }
 
 function cookieSecure(req: Request): boolean {
-  const nodeEnv = process.env.NODE_ENV || 'development';
-  const configured = process.env.COOKIE_SECURE;
-  const wantSecure = configured ? configured === 'true' : nodeEnv === 'production';
+  const wantSecure = process.env.COOKIE_SECURE
+    ? process.env.COOKIE_SECURE === 'true'
+    : (process.env.NODE_ENV || 'development') === 'production';
   if (!wantSecure) return false;
-  return Boolean(req.secure || req.headers['x-forwarded-proto'] === 'https');
+  return req.secure || req.headers['x-forwarded-proto'] === 'https';
 }
 
 function cookieOpts(req: Request) {
@@ -57,8 +64,7 @@ function cookieOpts(req: Request) {
 function getBaseUrl(req: Request): string {
   const explicit = process.env.PUBLIC_BASE_URL;
   if (explicit && explicit.trim()) return explicit.trim().replace(/\/+$/, '');
-  const proto =
-    (req.headers['x-forwarded-proto'] as string | undefined) ?? (req.secure ? 'https' : 'http');
+  const proto = (req.headers['x-forwarded-proto'] as string | undefined) ?? (req.secure ? 'https' : 'http');
   return `${proto}://${req.get('host')}`;
 }
 
@@ -67,7 +73,7 @@ async function exchangeAuthCodeForSession(params: {
   supabaseAnonKey: string;
   authCode: string;
   codeVerifier: string;
-}) {
+}): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
   const res = await fetch(`${params.supabaseUrl}/auth/v1/token?grant_type=pkce`, {
     method: 'POST',
     headers: {
@@ -79,42 +85,37 @@ async function exchangeAuthCodeForSession(params: {
       code_verifier: params.codeVerifier,
     }),
   });
-  const data: any = await res.json();
-  if (!res.ok) throw new Error(data?.msg || 'Auth exchange failed');
-  if (!data?.access_token || !data?.refresh_token) throw new Error('Auth response missing tokens');
-  return {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    expires_in: Number(data.expires_in ?? 0),
-  };
+
+  const data = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    const msg = typeof data?.msg === 'string' && data.msg.trim() ? data.msg : 'Auth exchange failed';
+    throw new Error(msg);
+  }
+  if (typeof data?.access_token !== 'string' || typeof data?.refresh_token !== 'string') {
+    throw new Error('Auth response missing tokens');
+  }
+  const expires_in = typeof data.expires_in === 'number' ? data.expires_in : Number(data.expires_in ?? 0);
+  return { access_token: data.access_token, refresh_token: data.refresh_token, expires_in };
 }
 
-async function fetchSupabaseUser(params: {
-  supabaseUrl: string;
-  supabaseAnonKey: string;
-  accessToken: string;
-}) {
-  const res = await fetch(`${params.supabaseUrl}/auth/v1/user`, {
-    headers: {
-      apikey: params.supabaseAnonKey,
-      Authorization: `Bearer ${params.accessToken}`,
-    },
+async function fetchSupabaseUser(supabaseUrl: string, supabaseAnonKey: string, accessToken: string) {
+  const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) return null;
-  return await res.json();
+  return (await res.json()) as Record<string, unknown> | null;
 }
 
 function verifySupabaseToken(token: string): jwt.JwtPayload {
-  const jwtSecret = requireEnv('SUPABASE_JWT_SECRET');
-  const decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] });
+  const decoded = jwt.verify(token, requireEnv('SUPABASE_JWT_SECRET'), { algorithms: ['HS256'] });
   if (typeof decoded !== 'object' || decoded === null) throw new Error('Invalid token');
   return decoded as jwt.JwtPayload;
 }
 
-// ── GET /login/google ─────────────────────────────────────────
 router.get('/login/google', (req, res) => {
   const supabaseUrl = getGotrueUrl();
   void requireEnv('SUPABASE_ANON_KEY');
+
   const { codeVerifier, codeChallenge } = createPkce();
   const appState = base64Url(crypto.randomBytes(16));
   const baseUrl = getBaseUrl(req);
@@ -131,25 +132,26 @@ router.get('/login/google', (req, res) => {
     maxAge: 10 * 60 * 1000,
   });
 
-  const authorizeUrl = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}&code_challenge=${encodeURIComponent(codeChallenge)}&code_challenge_method=s256`;
+  const authorizeUrl =
+    `${supabaseUrl}/auth/v1/authorize` +
+    `?provider=google` +
+    `&redirect_to=${encodeURIComponent(redirectTo)}` +
+    `&code_challenge=${encodeURIComponent(codeChallenge)}` +
+    `&code_challenge_method=s256`;
+
   res.redirect(302, authorizeUrl);
 });
 
-// ── GET /callback ─────────────────────────────────────────────
 router.get('/callback', async (req: Request, res: Response) => {
   const code = req.query.code;
   const state = req.query.state;
-
   if (typeof code !== 'string' || !code) return res.status(400).send('Missing code');
   if (typeof state !== 'string' || !state) return res.status(400).send('Missing state');
 
   const codeVerifier = req.cookies.pkce_v;
   const expectedState = req.cookies.app_state;
-
-  if (typeof codeVerifier !== 'string' || !codeVerifier)
-    return res.status(400).send('Missing PKCE verifier');
-  if (typeof expectedState !== 'string' || expectedState !== state)
-    return res.status(400).send('Invalid state');
+  if (typeof codeVerifier !== 'string' || !codeVerifier) return res.status(400).send('Missing PKCE verifier');
+  if (typeof expectedState !== 'string' || expectedState !== state) return res.status(400).send('Invalid state');
 
   try {
     const supabaseUrl = getGotrueUrl();
@@ -176,22 +178,36 @@ router.get('/callback', async (req: Request, res: Response) => {
 
     res.redirect(302, '/');
   } catch (err) {
-    res.status(400).send(err instanceof Error ? err.message : 'Auth callback failed');
+    const msg = err instanceof Error ? err.message : 'Auth callback failed';
+    res.status(400).send(msg);
   }
 });
 
-// ── POST /logout ──────────────────────────────────────────────
 router.post('/logout', (req, res) => {
   res.clearCookie('tb_access_token', cookieOpts(req));
   res.clearCookie('tb_refresh_token', cookieOpts(req));
   res.status(204).end();
 });
 
-// ── GET /session ──────────────────────────────────────────────
 router.get('/session', async (req: Request, res: Response) => {
-  const token =
-    typeof req.cookies.tb_access_token === 'string' ? req.cookies.tb_access_token : null;
+  if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
+    return res.json({
+      session: {
+        user: {
+          id: '00000000-0000-0000-0000-000000000000',
+          email: 'dev@the-boundary.com',
+          user_metadata: null,
+        },
+      },
+      access: {
+        role_slug: 'admin',
+        role_name: 'Admin',
+        is_admin: true,
+      },
+    });
+  }
 
+  const token = typeof req.cookies.tb_access_token === 'string' ? req.cookies.tb_access_token : null;
   if (!token) return res.json({ session: null, access: null });
 
   try {
@@ -201,40 +217,36 @@ router.get('/session', async (req: Request, res: Response) => {
 
     const supabaseUrl = getGotrueUrl();
     const supabaseAnonKey = requireEnv('SUPABASE_ANON_KEY');
-    const user = await fetchSupabaseUser({
-      supabaseUrl,
-      supabaseAnonKey,
-      accessToken: token,
-    });
 
     const supabase = getAuthSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'DB not configured' } });
+    if (!supabase) {
+      return res.status(503).json({ error: { message: 'DB not configured' } });
+    }
 
-    const { data: access, error: accessError } = await supabase
-      .from('effective_user_app_access_view')
-      .select('role_slug,role_name,is_admin')
-      .eq('user_id', userId)
-      .eq('app_slug', APP_SLUG)
-      .eq('is_active', true)
-      .eq('app_is_active', true)
-      .maybeSingle();
+    // Fetch user profile and app access in parallel (independent queries)
+    const [user, { data: access, error: accessError }] = await Promise.all([
+      fetchSupabaseUser(supabaseUrl, supabaseAnonKey, token),
+      supabase
+        .from('effective_user_app_access_view')
+        .select('role_slug,role_name,is_admin')
+        .eq('user_id', userId)
+        .eq('app_slug', APP_SLUG)
+        .eq('is_active', true)
+        .eq('app_is_active', true)
+        .maybeSingle(),
+    ]);
 
-    if (accessError) logger.warn(`Failed to load app access: ${accessError.message}`);
+    if (accessError) {
+      logger.warn(`Failed to load app access: ${accessError.message}`);
+    }
 
     res.json({
-      session: user
-        ? { user }
-        : {
-            user: {
-              id: userId,
-              email: decoded.email ?? null,
-              user_metadata: null,
-            },
-          },
+      session: user ? { user } : { user: { id: userId, email: decoded.email ?? null, user_metadata: null } },
       access: access ?? null,
     });
   } catch (err) {
-    logger.warn(err instanceof Error ? err.message : 'Invalid token');
+    const msg = err instanceof Error ? err.message : 'Invalid token';
+    logger.warn(msg);
     res.json({ session: null, access: null });
   }
 });

@@ -67,6 +67,6 @@ app.use('/api', notFoundHandler);
 app.use(errorHandler);
 
 app.listen(config.port, () => {
-  logger.info(`Server running on http://localhost:${config.port}`);
+  logger.info(`Quote Calculator server running on http://localhost:${config.port}`);
   logger.info(`Environment: ${config.nodeEnv}`);
 });

@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-const mockFrom = vi.fn();
-const mockSupabase = { from: mockFrom };
+const mockDbQuery = vi.fn();
 
 vi.mock('../services/supabase.js', () => ({
-  getSupabaseClient: () => mockSupabase,
-  getAuthSupabaseClient: () => mockSupabase,
+  dbQuery: (...args: any[]) => mockDbQuery(...args),
+  dbTransaction: vi.fn(),
+  getAuthSupabaseClient: () => null,
 }));
 
 vi.mock('../utils/logger.js', () => ({
@@ -44,10 +44,7 @@ describe('rate-cards routes', () => {
   describe('GET /api/rate-cards', () => {
     it('returns list of rate cards', async () => {
       const cards = [{ id: 'rc1', name: 'DHRE 2025', hours_per_second: 17.33, is_default: true }];
-      const chain: any = {};
-      chain.select = vi.fn().mockReturnValue(chain);
-      chain.order = vi.fn().mockResolvedValue({ data: cards, error: null });
-      mockFrom.mockReturnValue(chain);
+      mockDbQuery.mockResolvedValueOnce({ rows: cards });
 
       const res = await request(app).get('/api/rate-cards');
       expect(res.status).toBe(200);
@@ -59,13 +56,7 @@ describe('rate-cards routes', () => {
   describe('POST /api/rate-cards', () => {
     it('creates rate card as admin', async () => {
       const created = { id: 'rc1', name: 'New Card', hours_per_second: 10, is_default: false };
-      const chain: any = {};
-      const methods = ['insert', 'select', 'single', 'update', 'eq'];
-      for (const m of methods) {
-        chain[m] = vi.fn().mockReturnValue(chain);
-      }
-      chain.single = vi.fn().mockResolvedValue({ data: created, error: null });
-      mockFrom.mockReturnValue(chain);
+      mockDbQuery.mockResolvedValueOnce({ rows: [created] });
 
       const res = await request(app)
         .post('/api/rate-cards')
@@ -93,13 +84,7 @@ describe('rate-cards routes', () => {
   describe('POST /api/rate-cards/:id/items', () => {
     it('adds item as admin', async () => {
       const item = { id: 'i1', shot_type: 'Wide Shot', category: 'scene', hours: 12 };
-      const chain: any = {};
-      const methods = ['insert', 'select', 'single'];
-      for (const m of methods) {
-        chain[m] = vi.fn().mockReturnValue(chain);
-      }
-      chain.single = vi.fn().mockResolvedValue({ data: item, error: null });
-      mockFrom.mockReturnValue(chain);
+      mockDbQuery.mockResolvedValueOnce({ rows: [item] });
 
       const res = await request(app)
         .post('/api/rate-cards/rc1/items')
@@ -118,12 +103,7 @@ describe('rate-cards routes', () => {
 
   describe('DELETE /api/rate-cards/:id/items/:itemId', () => {
     it('deletes item as admin', async () => {
-      const chain: any = {
-        then: (resolve: any) => resolve({ error: null }),
-      };
-      chain.delete = vi.fn().mockReturnValue(chain);
-      chain.eq = vi.fn().mockReturnValue(chain);
-      mockFrom.mockReturnValue(chain);
+      mockDbQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
       const res = await request(app).delete('/api/rate-cards/rc1/items/i1');
       expect(res.status).toBe(204);

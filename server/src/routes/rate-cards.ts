@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
-import { getSupabaseClient } from '../services/supabase.js';
-import { logger } from '../utils/logger.js';
+import { dbQuery } from '../services/supabase.js';
+import { sendServerError, sendNotFound } from '../utils/route-helpers.js';
 import {
   validate,
   createRateCardSchema,
@@ -10,64 +10,51 @@ import {
 
 const router = Router();
 
-// GET /api/rate-cards — list all rate cards
+// ---------------------------------------------------------------------------
+// GET /api/rate-cards -- list all rate cards
+// ---------------------------------------------------------------------------
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
-
-    const { data, error } = await supabase
-      .from('rate_cards')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    res.json(data);
+    const { rows } = await dbQuery(
+      `SELECT * FROM rate_cards ORDER BY created_at DESC`,
+    );
+    res.json(rows);
   } catch (err) {
-    logger.error('Failed to list rate cards:', err);
-    res.status(500).json({ error: { message: 'Failed to list rate cards' } });
+    return sendServerError(res, err, 'Failed to list rate cards');
   }
 });
 
-// GET /api/rate-cards/:id — get rate card with items
+// ---------------------------------------------------------------------------
+// GET /api/rate-cards/:id -- get rate card with items
+// ---------------------------------------------------------------------------
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
+    const { rows: rcRows } = await dbQuery(
+      `SELECT * FROM rate_cards WHERE id = $1`,
+      [req.params.id],
+    );
+    const rateCard = rcRows[0];
+    if (!rateCard) return sendNotFound(res, 'Rate card');
 
-    const { data: rateCard, error: rcError } = await supabase
-      .from('rate_cards')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
+    const { rows: items } = await dbQuery(
+      `SELECT * FROM rate_card_items WHERE rate_card_id = $1 ORDER BY sort_order`,
+      [req.params.id],
+    );
 
-    if (rcError) throw rcError;
-    if (!rateCard) return res.status(404).json({ error: { message: 'Rate card not found' } });
-
-    const { data: items, error: itemsError } = await supabase
-      .from('rate_card_items')
-      .select('*')
-      .eq('rate_card_id', req.params.id)
-      .order('sort_order');
-
-    if (itemsError) throw itemsError;
-
-    res.json({ ...rateCard, items: items || [] });
+    res.json({ ...rateCard, items });
   } catch (err) {
-    logger.error('Failed to get rate card:', err);
-    res.status(500).json({ error: { message: 'Failed to get rate card' } });
+    return sendServerError(res, err, 'Failed to get rate card');
   }
 });
 
-// POST /api/rate-cards — create rate card (admin only)
+// ---------------------------------------------------------------------------
+// POST /api/rate-cards -- create rate card (admin only)
+// ---------------------------------------------------------------------------
 router.post('/', async (req: Request, res: Response) => {
   try {
     if (!req.user?.appAccess?.is_admin) {
       return res.status(403).json({ error: { message: 'Admin access required' } });
     }
-
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
 
     const parsed = validate(createRateCardSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
@@ -75,153 +62,125 @@ router.post('/', async (req: Request, res: Response) => {
 
     // If setting as default, unset other defaults
     if (is_default) {
-      await supabase.from('rate_cards').update({ is_default: false }).eq('is_default', true);
+      await dbQuery(`UPDATE rate_cards SET is_default = false WHERE is_default = true`);
     }
 
-    const { data, error } = await supabase
-      .from('rate_cards')
-      .insert({
-        name,
-        hours_per_second,
-        editing_hours_per_30s: editing_hours_per_30s || 100,
-        is_default: is_default || false,
-        created_by: req.user.id,
-      })
-      .select()
-      .single();
+    const { rows } = await dbQuery(
+      `INSERT INTO rate_cards (name, hours_per_second, editing_hours_per_30s, is_default, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [name, hours_per_second, editing_hours_per_30s || 100, is_default || false, req.user.id],
+    );
 
-    if (error) throw error;
-    res.status(201).json(data);
+    res.status(201).json(rows[0]);
   } catch (err) {
-    logger.error('Failed to create rate card:', err);
-    res.status(500).json({ error: { message: 'Failed to create rate card' } });
+    return sendServerError(res, err, 'Failed to create rate card');
   }
 });
 
-// PUT /api/rate-cards/:id — update rate card (admin only)
+// ---------------------------------------------------------------------------
+// PUT /api/rate-cards/:id -- update rate card (admin only)
+// ---------------------------------------------------------------------------
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     if (!req.user?.appAccess?.is_admin) {
       return res.status(403).json({ error: { message: 'Admin access required' } });
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
-
     const parsed = validate(updateRateCardSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { name, hours_per_second, editing_hours_per_30s, is_default } = parsed.data;
 
     if (is_default) {
-      await supabase.from('rate_cards').update({ is_default: false }).eq('is_default', true);
+      await dbQuery(`UPDATE rate_cards SET is_default = false WHERE is_default = true`);
     }
 
-    const { data, error } = await supabase
-      .from('rate_cards')
-      .update({
-        name,
-        hours_per_second,
-        editing_hours_per_30s,
-        is_default,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', req.params.id)
-      .select()
-      .single();
+    const { rows } = await dbQuery(
+      `UPDATE rate_cards
+       SET name = $1, hours_per_second = $2, editing_hours_per_30s = $3, is_default = $4, updated_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [name, hours_per_second, editing_hours_per_30s, is_default, req.params.id],
+    );
 
-    if (error) throw error;
-    res.json(data);
+    if (rows.length === 0) return sendNotFound(res, 'Rate card');
+    res.json(rows[0]);
   } catch (err) {
-    logger.error('Failed to update rate card:', err);
-    res.status(500).json({ error: { message: 'Failed to update rate card' } });
+    return sendServerError(res, err, 'Failed to update rate card');
   }
 });
 
-// POST /api/rate-cards/:id/items — add item (admin only)
+// ---------------------------------------------------------------------------
+// POST /api/rate-cards/:id/items -- add item (admin only)
+// ---------------------------------------------------------------------------
 router.post('/:id/items', async (req: Request, res: Response) => {
   try {
     if (!req.user?.appAccess?.is_admin) {
       return res.status(403).json({ error: { message: 'Admin access required' } });
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
-
     const parsed = validate(rateCardItemSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { shot_type, category, hours, sort_order } = parsed.data;
 
-    const { data, error } = await supabase
-      .from('rate_card_items')
-      .insert({
-        rate_card_id: req.params.id,
-        shot_type,
-        category,
-        hours,
-        sort_order: sort_order || 0,
-      })
-      .select()
-      .single();
+    const { rows } = await dbQuery(
+      `INSERT INTO rate_card_items (rate_card_id, shot_type, category, hours, sort_order)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [req.params.id, shot_type, category, hours, sort_order || 0],
+    );
 
-    if (error) throw error;
-    res.status(201).json(data);
+    res.status(201).json(rows[0]);
   } catch (err) {
-    logger.error('Failed to add rate card item:', err);
-    res.status(500).json({ error: { message: 'Failed to add rate card item' } });
+    return sendServerError(res, err, 'Failed to add rate card item');
   }
 });
 
-// PUT /api/rate-cards/:id/items/:itemId — update item (admin only)
+// ---------------------------------------------------------------------------
+// PUT /api/rate-cards/:id/items/:itemId -- update item (admin only)
+// ---------------------------------------------------------------------------
 router.put('/:id/items/:itemId', async (req: Request, res: Response) => {
   try {
     if (!req.user?.appAccess?.is_admin) {
       return res.status(403).json({ error: { message: 'Admin access required' } });
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
-
     const parsed = validate(rateCardItemSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { shot_type, category, hours, sort_order } = parsed.data;
 
-    const { data, error } = await supabase
-      .from('rate_card_items')
-      .update({ shot_type, category, hours, sort_order })
-      .eq('id', req.params.itemId)
-      .eq('rate_card_id', req.params.id)
-      .select()
-      .single();
+    const { rows } = await dbQuery(
+      `UPDATE rate_card_items
+       SET shot_type = $1, category = $2, hours = $3, sort_order = $4
+       WHERE id = $5 AND rate_card_id = $6
+       RETURNING *`,
+      [shot_type, category, hours, sort_order, req.params.itemId, req.params.id],
+    );
 
-    if (error) throw error;
-    res.json(data);
+    if (rows.length === 0) return sendNotFound(res, 'Rate card item');
+    res.json(rows[0]);
   } catch (err) {
-    logger.error('Failed to update rate card item:', err);
-    res.status(500).json({ error: { message: 'Failed to update rate card item' } });
+    return sendServerError(res, err, 'Failed to update rate card item');
   }
 });
 
-// DELETE /api/rate-cards/:id/items/:itemId — remove item (admin only)
+// ---------------------------------------------------------------------------
+// DELETE /api/rate-cards/:id/items/:itemId -- remove item (admin only)
+// ---------------------------------------------------------------------------
 router.delete('/:id/items/:itemId', async (req: Request, res: Response) => {
   try {
     if (!req.user?.appAccess?.is_admin) {
       return res.status(403).json({ error: { message: 'Admin access required' } });
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
+    await dbQuery(
+      `DELETE FROM rate_card_items WHERE id = $1 AND rate_card_id = $2`,
+      [req.params.itemId, req.params.id],
+    );
 
-    const { error } = await supabase
-      .from('rate_card_items')
-      .delete()
-      .eq('id', req.params.itemId)
-      .eq('rate_card_id', req.params.id);
-
-    if (error) throw error;
     res.status(204).end();
   } catch (err) {
-    logger.error('Failed to delete rate card item:', err);
-    res.status(500).json({ error: { message: 'Failed to delete rate card item' } });
+    return sendServerError(res, err, 'Failed to delete rate card item');
   }
 });
 

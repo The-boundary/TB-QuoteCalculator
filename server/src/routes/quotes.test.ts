@@ -2,13 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-// Mock supabase before importing routes
-const mockFrom = vi.fn();
-const mockSupabase = { from: mockFrom };
+// Mock dbQuery / dbTransaction before importing routes
+const mockDbQuery = vi.fn();
+const mockDbTransaction = vi.fn();
 
 vi.mock('../services/supabase.js', () => ({
-  getSupabaseClient: () => mockSupabase,
-  getAuthSupabaseClient: () => mockSupabase,
+  dbQuery: (...args: any[]) => mockDbQuery(...args),
+  dbTransaction: (...args: any[]) => mockDbTransaction(...args),
+  getAuthSupabaseClient: () => null,
 }));
 
 vi.mock('../utils/logger.js', () => ({
@@ -47,17 +48,7 @@ describe('quotes routes', () => {
 
   describe('GET /api/quotes', () => {
     it('returns empty array when no quotes', async () => {
-      const chain: any = {};
-      const methods = ['select', 'neq', 'order', 'in'];
-      for (const m of methods) {
-        chain[m] = vi.fn().mockReturnValue(chain);
-      }
-      // First call to .from('quotes') returns empty
-      chain.select = vi.fn().mockReturnValue(chain);
-      chain.neq = vi.fn().mockReturnValue(chain);
-      chain.order = vi.fn().mockResolvedValue({ data: [], error: null });
-
-      mockFrom.mockReturnValue(chain);
+      mockDbQuery.mockResolvedValueOnce({ rows: [] });
 
       const res = await request(app).get('/api/quotes');
       expect(res.status).toBe(200);
@@ -77,23 +68,10 @@ describe('quotes routes', () => {
         },
       ];
 
-      let callCount = 0;
-      mockFrom.mockImplementation(() => {
-        callCount++;
-        const chain: any = {};
-        const methods = ['select', 'neq', 'eq', 'in', 'order'];
-        for (const m of methods) {
-          chain[m] = vi.fn().mockReturnValue(chain);
-        }
-        if (callCount === 1) {
-          // quotes query
-          chain.order = vi.fn().mockResolvedValue({ data: quotes, error: null });
-        } else {
-          // versions query
-          chain.order = vi.fn().mockResolvedValue({ data: versions, error: null });
-        }
-        return chain;
-      });
+      // First call: quotes query
+      mockDbQuery.mockResolvedValueOnce({ rows: quotes });
+      // Second call: versions query
+      mockDbQuery.mockResolvedValueOnce({ rows: versions });
 
       const res = await request(app).get('/api/quotes');
       expect(res.status).toBe(200);
@@ -120,25 +98,17 @@ describe('quotes routes', () => {
       };
       const createdVersion = { id: 'v1', quote_id: 'q1', version_number: 1, duration_seconds: 60 };
 
-      let callCount = 0;
-      mockFrom.mockImplementation(() => {
-        callCount++;
-        const chain: any = {};
-        const methods = ['select', 'insert', 'eq', 'single'];
-        for (const m of methods) {
-          chain[m] = vi.fn().mockReturnValue(chain);
-        }
-        if (callCount === 1) {
-          // rate_cards select
-          chain.single = vi.fn().mockResolvedValue({ data: rateCard, error: null });
-        } else if (callCount === 2) {
-          // quotes insert
-          chain.single = vi.fn().mockResolvedValue({ data: createdQuote, error: null });
-        } else {
-          // quote_versions insert
-          chain.single = vi.fn().mockResolvedValue({ data: createdVersion, error: null });
-        }
-        return chain;
+      mockDbTransaction.mockImplementation(async (fn: any) => {
+        const mockClient = {
+          query: vi.fn()
+            // 1st call: SELECT rate card
+            .mockResolvedValueOnce({ rows: [rateCard] })
+            // 2nd call: INSERT quote
+            .mockResolvedValueOnce({ rows: [createdQuote] })
+            // 3rd call: INSERT version
+            .mockResolvedValueOnce({ rows: [createdVersion] }),
+        };
+        return fn(mockClient);
       });
 
       const res = await request(app).post('/api/quotes').send({
@@ -159,16 +129,9 @@ describe('quotes routes', () => {
     });
 
     it('allows admin to approve', async () => {
-      const chain: any = {};
-      const methods = ['update', 'eq', 'select', 'single'];
-      for (const m of methods) {
-        chain[m] = vi.fn().mockReturnValue(chain);
-      }
-      chain.single = vi.fn().mockResolvedValue({
-        data: { id: 'q1', status: 'approved' },
-        error: null,
+      mockDbQuery.mockResolvedValueOnce({
+        rows: [{ id: 'q1', status: 'approved' }],
       });
-      mockFrom.mockReturnValue(chain);
 
       const res = await request(app).put('/api/quotes/q1/status').send({ status: 'approved' });
       expect(res.status).toBe(200);
@@ -201,16 +164,9 @@ describe('quotes routes', () => {
 
   describe('DELETE /api/quotes/:id', () => {
     it('soft-deletes by setting status to archived', async () => {
-      const chain: any = {};
-      const methods = ['update', 'eq', 'select', 'single'];
-      for (const m of methods) {
-        chain[m] = vi.fn().mockReturnValue(chain);
-      }
-      chain.single = vi.fn().mockResolvedValue({
-        data: { id: 'q1', status: 'archived' },
-        error: null,
+      mockDbQuery.mockResolvedValueOnce({
+        rows: [{ id: 'q1', status: 'archived' }],
       });
-      mockFrom.mockReturnValue(chain);
 
       const res = await request(app).delete('/api/quotes/q1');
       expect(res.status).toBe(200);

@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
-import { getSupabaseClient } from '../services/supabase.js';
-import { logger } from '../utils/logger.js';
+import { dbQuery, dbTransaction } from '../services/supabase.js';
+import { sendServerError, sendNotFound, httpError, type HttpError } from '../utils/route-helpers.js';
 import {
   validate,
   createQuoteSchema,
@@ -12,211 +12,183 @@ import {
 
 const router = Router();
 
-// GET /api/quotes — list all quotes with latest version summary
+// ---------------------------------------------------------------------------
+// GET /api/quotes -- list all quotes with latest version summary
+// ---------------------------------------------------------------------------
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
+    const { rows: quotes } = await dbQuery(
+      `SELECT * FROM quotes WHERE status != 'archived' ORDER BY updated_at DESC`,
+    );
 
-    const { data: quotes, error } = await supabase
-      .from('quotes')
-      .select('*')
-      .neq('status', 'archived')
-      .order('updated_at', { ascending: false });
-
-    if (error) throw error;
-    if (!quotes || quotes.length === 0) return res.json([]);
+    if (quotes.length === 0) return res.json([]);
 
     // Batch fetch all versions for these quotes (single query instead of N+1)
-    const quoteIds = quotes.map((q: any) => q.id);
-    const { data: allVersions } = await supabase
-      .from('quote_versions')
-      .select(
-        'id, quote_id, version_number, duration_seconds, pool_budget_hours, total_hours, created_at',
-      )
-      .in('quote_id', quoteIds)
-      .order('version_number', { ascending: false });
+    const quoteIds = quotes.map((q: { id: string }) => q.id);
+    const { rows: allVersions } = await dbQuery(
+      `SELECT id, quote_id, version_number, duration_seconds, pool_budget_hours, total_hours, created_at
+       FROM quote_versions
+       WHERE quote_id = ANY($1)
+       ORDER BY version_number DESC`,
+      [quoteIds],
+    );
 
     // Group versions by quote_id
-    const versionsByQuote = new Map<string, any[]>();
-    for (const v of allVersions || []) {
+    const versionsByQuote = new Map<string, typeof allVersions>();
+    for (const v of allVersions) {
       const existing = versionsByQuote.get(v.quote_id);
       if (existing) existing.push(v);
       else versionsByQuote.set(v.quote_id, [v]);
     }
 
-    const enriched = quotes.map((quote: any) => {
+    const enriched = quotes.map((quote: { id: string }) => {
       const versions = versionsByQuote.get(quote.id) || [];
       return {
         ...quote,
-        latest_version: versions[0] || null, // Already sorted desc by version_number
+        latest_version: versions[0] || null,
         version_count: versions.length,
       };
     });
 
     res.json(enriched);
   } catch (err) {
-    logger.error('Failed to list quotes:', err);
-    res.status(500).json({ error: { message: 'Failed to list quotes' } });
+    return sendServerError(res, err, 'Failed to list quotes');
   }
 });
 
-// GET /api/quotes/:id — get quote with all versions and shots
+// ---------------------------------------------------------------------------
+// GET /api/quotes/:id -- get quote with all versions and shots
+// ---------------------------------------------------------------------------
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
+    const { rows: quoteRows } = await dbQuery(
+      `SELECT * FROM quotes WHERE id = $1`,
+      [req.params.id],
+    );
 
-    const { data: quote, error: qError } = await supabase
-      .from('quotes')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
-
-    if (qError) throw qError;
-    if (!quote) return res.status(404).json({ error: { message: 'Quote not found' } });
+    const quote = quoteRows[0];
+    if (!quote) return sendNotFound(res, 'Quote');
 
     // Get rate card
-    const { data: rateCard } = await supabase
-      .from('rate_cards')
-      .select('*')
-      .eq('id', quote.rate_card_id)
-      .single();
+    const { rows: rcRows } = await dbQuery(
+      `SELECT * FROM rate_cards WHERE id = $1`,
+      [quote.rate_card_id],
+    );
+    const rateCard = rcRows[0] || null;
 
     // Get all versions
-    const { data: versions, error: vError } = await supabase
-      .from('quote_versions')
-      .select('*')
-      .eq('quote_id', req.params.id)
-      .order('version_number', { ascending: true });
-
-    if (vError) throw vError;
+    const { rows: versions } = await dbQuery(
+      `SELECT * FROM quote_versions WHERE quote_id = $1 ORDER BY version_number ASC`,
+      [req.params.id],
+    );
 
     // Batch fetch all shots for all versions (single query instead of N+1)
-    const versionIds = (versions || []).map((v: any) => v.id);
-    let allShots: any[] = [];
-    if (versionIds.length > 0) {
-      const { data: shotsData } = await supabase
-        .from('version_shots')
-        .select('*')
-        .in('version_id', versionIds)
-        .order('sort_order');
-      allShots = shotsData || [];
-    }
+    const versionIds = versions.map((v: { id: string }) => v.id);
+    const allShots = versionIds.length > 0
+      ? (await dbQuery(
+          `SELECT * FROM version_shots WHERE version_id = ANY($1) ORDER BY sort_order`,
+          [versionIds],
+        )).rows
+      : [];
 
-    const shotsByVersion = new Map<string, any[]>();
+    const shotsByVersion = new Map<string, typeof allShots>();
     for (const shot of allShots) {
       const existing = shotsByVersion.get(shot.version_id);
       if (existing) existing.push(shot);
       else shotsByVersion.set(shot.version_id, [shot]);
     }
 
-    const versionsWithShots = (versions || []).map((version: any) => ({
+    const versionsWithShots = versions.map((version: { id: string }) => ({
       ...version,
       shots: shotsByVersion.get(version.id) || [],
     }));
 
     res.json({ ...quote, rate_card: rateCard, versions: versionsWithShots });
   } catch (err) {
-    logger.error('Failed to get quote:', err);
-    res.status(500).json({ error: { message: 'Failed to get quote' } });
+    return sendServerError(res, err, 'Failed to get quote');
   }
 });
 
-// POST /api/quotes — create quote with empty v1
+// ---------------------------------------------------------------------------
+// POST /api/quotes -- create quote with empty v1
+// ---------------------------------------------------------------------------
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
-
     const parsed = validate(createQuoteSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { client_name, project_name, rate_card_id } = parsed.data;
 
-    // Get rate card for pool calculation
-    const { data: rateCard, error: rcError } = await supabase
-      .from('rate_cards')
-      .select('hours_per_second, editing_hours_per_30s')
-      .eq('id', rate_card_id)
-      .single();
+    const result = await dbTransaction(async (client) => {
+      // Get rate card for pool calculation
+      const { rows: rcRows } = await client.query(
+        `SELECT hours_per_second, editing_hours_per_30s FROM rate_cards WHERE id = $1`,
+        [rate_card_id],
+      );
+      const rateCard = rcRows[0];
+      if (!rateCard) throw httpError('Invalid rate card', 400);
 
-    if (rcError || !rateCard) {
-      return res.status(400).json({ error: { message: 'Invalid rate card' } });
-    }
+      // Create quote
+      const { rows: quoteRows } = await client.query(
+        `INSERT INTO quotes (client_name, project_name, rate_card_id, status, created_by)
+         VALUES ($1, $2, $3, 'draft', $4)
+         RETURNING *`,
+        [client_name, project_name, rate_card_id, req.user!.id],
+      );
+      const quote = quoteRows[0];
 
-    // Create quote
-    const { data: quote, error: qError } = await supabase
-      .from('quotes')
-      .insert({
-        client_name,
-        project_name,
-        rate_card_id,
-        status: 'draft',
-        created_by: req.user!.id,
-      })
-      .select()
-      .single();
+      // Create empty version 1 with default 60s duration
+      const defaultDuration = 60;
+      const poolBudget = defaultDuration * rateCard.hours_per_second;
+      const editingHours = Math.ceil(defaultDuration / 30) * rateCard.editing_hours_per_30s;
 
-    if (qError) throw qError;
+      const { rows: versionRows } = await client.query(
+        `INSERT INTO quote_versions (quote_id, version_number, duration_seconds, pool_budget_hours, total_hours, created_by)
+         VALUES ($1, 1, $2, $3, $4, $5)
+         RETURNING *`,
+        [quote.id, defaultDuration, poolBudget, editingHours, req.user!.id],
+      );
+      const version = versionRows[0];
 
-    // Create empty version 1 with default 60s duration
-    const defaultDuration = 60;
-    const poolBudget = defaultDuration * rateCard.hours_per_second;
-    const editingHours = Math.ceil(defaultDuration / 30) * rateCard.editing_hours_per_30s;
+      return { ...quote, versions: [{ ...version, shots: [] }] };
+    });
 
-    const { data: version, error: vError } = await supabase
-      .from('quote_versions')
-      .insert({
-        quote_id: quote.id,
-        version_number: 1,
-        duration_seconds: defaultDuration,
-        pool_budget_hours: poolBudget,
-        total_hours: editingHours, // Just editing hours for empty version
-        created_by: req.user!.id,
-      })
-      .select()
-      .single();
-
-    if (vError) throw vError;
-
-    res.status(201).json({ ...quote, versions: [{ ...version, shots: [] }] });
+    res.status(201).json(result);
   } catch (err) {
-    logger.error('Failed to create quote:', err);
-    res.status(500).json({ error: { message: 'Failed to create quote' } });
+    const httpErr = err as HttpError;
+    if (httpErr.statusCode === 400) {
+      return res.status(400).json({ error: { message: httpErr.message } });
+    }
+    return sendServerError(res, err, 'Failed to create quote');
   }
 });
 
-// PUT /api/quotes/:id — update quote metadata
+// ---------------------------------------------------------------------------
+// PUT /api/quotes/:id -- update quote metadata
+// ---------------------------------------------------------------------------
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
-
     const parsed = validate(updateQuoteSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { client_name, project_name } = parsed.data;
 
-    const { data, error } = await supabase
-      .from('quotes')
-      .update({ client_name, project_name, updated_at: new Date().toISOString() })
-      .eq('id', req.params.id)
-      .select()
-      .single();
+    const { rows } = await dbQuery(
+      `UPDATE quotes SET client_name = $1, project_name = $2, updated_at = NOW()
+       WHERE id = $3 RETURNING *`,
+      [client_name, project_name, req.params.id],
+    );
 
-    if (error) throw error;
-    res.json(data);
+    if (rows.length === 0) return sendNotFound(res, 'Quote');
+    res.json(rows[0]);
   } catch (err) {
-    logger.error('Failed to update quote:', err);
-    res.status(500).json({ error: { message: 'Failed to update quote' } });
+    return sendServerError(res, err, 'Failed to update quote');
   }
 });
 
-// PUT /api/quotes/:id/status — update status
+// ---------------------------------------------------------------------------
+// PUT /api/quotes/:id/status -- update status
+// ---------------------------------------------------------------------------
 router.put('/:id/status', async (req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
-
     const parsed = validate(updateStatusSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { status } = parsed.data;
@@ -226,228 +198,231 @@ router.put('/:id/status', async (req: Request, res: Response) => {
       return res.status(403).json({ error: { message: 'Only admins can approve quotes' } });
     }
 
-    const { data, error } = await supabase
-      .from('quotes')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', req.params.id)
-      .select()
-      .single();
+    const { rows } = await dbQuery(
+      `UPDATE quotes SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [status, req.params.id],
+    );
 
-    if (error) throw error;
-    res.json(data);
+    if (rows.length === 0) return sendNotFound(res, 'Quote');
+    res.json(rows[0]);
   } catch (err) {
-    logger.error('Failed to update quote status:', err);
-    res.status(500).json({ error: { message: 'Failed to update quote status' } });
+    return sendServerError(res, err, 'Failed to update quote status');
   }
 });
 
-// DELETE /api/quotes/:id — archive quote (soft delete)
+// ---------------------------------------------------------------------------
+// DELETE /api/quotes/:id -- archive quote (soft delete)
+// ---------------------------------------------------------------------------
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
+    const { rows } = await dbQuery(
+      `UPDATE quotes SET status = 'archived', updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [req.params.id],
+    );
 
-    const { data, error } = await supabase
-      .from('quotes')
-      .update({ status: 'archived', updated_at: new Date().toISOString() })
-      .eq('id', req.params.id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    res.json(data);
+    if (rows.length === 0) return sendNotFound(res, 'Quote');
+    res.json(rows[0]);
   } catch (err) {
-    logger.error('Failed to archive quote:', err);
-    res.status(500).json({ error: { message: 'Failed to archive quote' } });
+    return sendServerError(res, err, 'Failed to archive quote');
   }
 });
 
-// POST /api/quotes/:id/versions — create new version
+// ---------------------------------------------------------------------------
+// POST /api/quotes/:id/versions -- create new version
+// ---------------------------------------------------------------------------
 router.post('/:id/versions', async (req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
-
     const parsed = validate(createVersionSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { duration_seconds, notes, shots } = parsed.data;
 
-    // Get quote and rate card
-    const { data: quote, error: qError } = await supabase
-      .from('quotes')
-      .select('rate_card_id')
-      .eq('id', req.params.id)
-      .single();
+    const result = await dbTransaction(async (client) => {
+      // Get quote and rate card
+      const { rows: quoteRows } = await client.query(
+        `SELECT rate_card_id FROM quotes WHERE id = $1`,
+        [req.params.id],
+      );
+      const quote = quoteRows[0];
+      if (!quote) throw httpError('Quote not found', 404);
 
-    if (qError || !quote) return res.status(404).json({ error: { message: 'Quote not found' } });
+      const { rows: rcRows } = await client.query(
+        `SELECT hours_per_second, editing_hours_per_30s FROM rate_cards WHERE id = $1`,
+        [quote.rate_card_id],
+      );
+      const rateCard = rcRows[0];
+      if (!rateCard) throw httpError('Rate card not found', 400);
 
-    const { data: rateCard } = await supabase
-      .from('rate_cards')
-      .select('hours_per_second, editing_hours_per_30s')
-      .eq('id', quote.rate_card_id)
-      .single();
+      // Get next version number
+      const { rows: existingVersions } = await client.query(
+        `SELECT version_number FROM quote_versions WHERE quote_id = $1 ORDER BY version_number DESC LIMIT 1`,
+        [req.params.id],
+      );
+      const nextVersion = (existingVersions[0]?.version_number || 0) + 1;
 
-    if (!rateCard) return res.status(400).json({ error: { message: 'Rate card not found' } });
+      // Calculate budget
+      const poolBudget = duration_seconds * rateCard.hours_per_second;
+      const editingHours = Math.ceil(duration_seconds / 30) * rateCard.editing_hours_per_30s;
 
-    // Get next version number
-    const { data: existingVersions } = await supabase
-      .from('quote_versions')
-      .select('version_number')
-      .eq('quote_id', req.params.id)
-      .order('version_number', { ascending: false })
-      .limit(1);
+      // Calculate total shot hours
+      const shotRows = (shots || []).map((shot, idx) => ({
+        shot_type: shot.shot_type,
+        quantity: shot.quantity || 1,
+        base_hours_each: shot.base_hours_each,
+        efficiency_multiplier: shot.efficiency_multiplier || 1.0,
+        adjusted_hours:
+          (shot.base_hours_each || 0) * (shot.quantity || 1) * (shot.efficiency_multiplier || 1.0),
+        sort_order: shot.sort_order ?? idx,
+      }));
 
-    const nextVersion = (existingVersions?.[0]?.version_number || 0) + 1;
+      const totalShotHours = shotRows.reduce((sum, s) => sum + s.adjusted_hours, 0);
+      const totalHours = totalShotHours + editingHours;
 
-    // Calculate budget
-    const poolBudget = duration_seconds * rateCard.hours_per_second;
-    const editingHours = Math.ceil(duration_seconds / 30) * rateCard.editing_hours_per_30s;
+      // Create version
+      const { rows: versionRows } = await client.query(
+        `INSERT INTO quote_versions (quote_id, version_number, duration_seconds, pool_budget_hours, total_hours, notes, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [req.params.id, nextVersion, duration_seconds, poolBudget, totalHours, notes || null, req.user!.id],
+      );
+      const version = versionRows[0];
 
-    // Calculate total shot hours
-    const shotRows = (shots || []).map((shot: any, idx: number) => ({
-      shot_type: shot.shot_type,
-      quantity: shot.quantity || 1,
-      base_hours_each: shot.base_hours_each,
-      efficiency_multiplier: shot.efficiency_multiplier || 1.0,
-      adjusted_hours:
-        (shot.base_hours_each || 0) * (shot.quantity || 1) * (shot.efficiency_multiplier || 1.0),
-      sort_order: shot.sort_order ?? idx,
-    }));
+      // Create shots
+      const createdShots = [];
+      for (const s of shotRows) {
+        const { rows } = await client.query(
+          `INSERT INTO version_shots (version_id, shot_type, quantity, base_hours_each, efficiency_multiplier, adjusted_hours, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING *`,
+          [version.id, s.shot_type, s.quantity, s.base_hours_each, s.efficiency_multiplier, s.adjusted_hours, s.sort_order],
+        );
+        createdShots.push(rows[0]);
+      }
 
-    const totalShotHours = shotRows.reduce((sum: number, s: any) => sum + s.adjusted_hours, 0);
-    const totalHours = totalShotHours + editingHours;
+      // Update quote updated_at
+      await client.query(
+        `UPDATE quotes SET updated_at = NOW() WHERE id = $1`,
+        [req.params.id],
+      );
 
-    // Create version
-    const { data: version, error: vError } = await supabase
-      .from('quote_versions')
-      .insert({
-        quote_id: req.params.id,
-        version_number: nextVersion,
-        duration_seconds,
-        pool_budget_hours: poolBudget,
-        total_hours: totalHours,
-        notes: notes || null,
-        created_by: req.user!.id,
-      })
-      .select()
-      .single();
+      return { ...version, shots: createdShots };
+    });
 
-    if (vError) throw vError;
-
-    // Create shots
-    let createdShots: any[] = [];
-    if (shotRows.length > 0) {
-      const shotsWithVersion = shotRows.map((s: any) => ({ ...s, version_id: version.id }));
-      const { data: insertedShots, error: sError } = await supabase
-        .from('version_shots')
-        .insert(shotsWithVersion)
-        .select();
-
-      if (sError) throw sError;
-      createdShots = insertedShots || [];
-    }
-
-    // Update quote updated_at
-    await supabase
-      .from('quotes')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', req.params.id);
-
-    res.status(201).json({ ...version, shots: createdShots });
+    res.status(201).json(result);
   } catch (err) {
-    logger.error('Failed to create version:', err);
-    res.status(500).json({ error: { message: 'Failed to create version' } });
+    const httpErr = err as HttpError;
+    if (httpErr.statusCode === 404) {
+      return res.status(404).json({ error: { message: httpErr.message } });
+    }
+    if (httpErr.statusCode === 400) {
+      return res.status(400).json({ error: { message: httpErr.message } });
+    }
+    return sendServerError(res, err, 'Failed to create version');
   }
 });
 
-// PUT /api/quotes/:id/versions/:versionId — update version shots
+// ---------------------------------------------------------------------------
+// PUT /api/quotes/:id/versions/:versionId -- update version shots
+// ---------------------------------------------------------------------------
 router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
-
     const parsed = validate(updateVersionSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { duration_seconds, shots, notes } = parsed.data;
 
-    // Get rate card for calculations
-    const { data: quote } = await supabase
-      .from('quotes')
-      .select('rate_card_id')
-      .eq('id', req.params.id)
-      .single();
+    const result = await dbTransaction(async (client) => {
+      // Get rate card for calculations
+      const { rows: quoteRows } = await client.query(
+        `SELECT rate_card_id FROM quotes WHERE id = $1`,
+        [req.params.id],
+      );
+      const quote = quoteRows[0];
+      if (!quote) throw httpError('Quote not found', 404);
 
-    if (!quote) return res.status(404).json({ error: { message: 'Quote not found' } });
+      const { rows: rcRows } = await client.query(
+        `SELECT hours_per_second, editing_hours_per_30s FROM rate_cards WHERE id = $1`,
+        [quote.rate_card_id],
+      );
+      const rateCard = rcRows[0];
+      if (!rateCard) throw httpError('Rate card not found', 400);
 
-    const { data: rateCard } = await supabase
-      .from('rate_cards')
-      .select('hours_per_second, editing_hours_per_30s')
-      .eq('id', quote.rate_card_id)
-      .single();
+      const dur = duration_seconds || 60;
+      const poolBudget = dur * rateCard.hours_per_second;
+      const editingHours = Math.ceil(dur / 30) * rateCard.editing_hours_per_30s;
 
-    if (!rateCard) return res.status(400).json({ error: { message: 'Rate card not found' } });
+      // Recalculate shots
+      const shotRows = (shots || []).map((shot, idx) => ({
+        version_id: req.params.versionId,
+        shot_type: shot.shot_type,
+        quantity: shot.quantity || 1,
+        base_hours_each: shot.base_hours_each,
+        efficiency_multiplier: shot.efficiency_multiplier || 1.0,
+        adjusted_hours:
+          (shot.base_hours_each || 0) * (shot.quantity || 1) * (shot.efficiency_multiplier || 1.0),
+        sort_order: shot.sort_order ?? idx,
+      }));
 
-    const dur = duration_seconds || 60;
-    const poolBudget = dur * rateCard.hours_per_second;
-    const editingHours = Math.ceil(dur / 30) * rateCard.editing_hours_per_30s;
+      const totalShotHours = shotRows.reduce((sum, s) => sum + s.adjusted_hours, 0);
+      const totalHours = totalShotHours + editingHours;
 
-    // Recalculate shots
-    const shotRows = (shots || []).map((shot: any, idx: number) => ({
-      version_id: req.params.versionId,
-      shot_type: shot.shot_type,
-      quantity: shot.quantity || 1,
-      base_hours_each: shot.base_hours_each,
-      efficiency_multiplier: shot.efficiency_multiplier || 1.0,
-      adjusted_hours:
-        (shot.base_hours_each || 0) * (shot.quantity || 1) * (shot.efficiency_multiplier || 1.0),
-      sort_order: shot.sort_order ?? idx,
-    }));
+      // Delete existing shots
+      await client.query(
+        `DELETE FROM version_shots WHERE version_id = $1`,
+        [req.params.versionId],
+      );
 
-    const totalShotHours = shotRows.reduce((sum: number, s: any) => sum + s.adjusted_hours, 0);
-    const totalHours = totalShotHours + editingHours;
+      // Insert new shots
+      const createdShots = [];
+      for (const s of shotRows) {
+        const { rows } = await client.query(
+          `INSERT INTO version_shots (version_id, shot_type, quantity, base_hours_each, efficiency_multiplier, adjusted_hours, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING *`,
+          [s.version_id, s.shot_type, s.quantity, s.base_hours_each, s.efficiency_multiplier, s.adjusted_hours, s.sort_order],
+        );
+        createdShots.push(rows[0]);
+      }
 
-    // Delete existing shots
-    await supabase.from('version_shots').delete().eq('version_id', req.params.versionId);
+      // Update version
+      const setClauses = [
+        'duration_seconds = $1',
+        'pool_budget_hours = $2',
+        'total_hours = $3',
+      ];
+      const params: unknown[] = [dur, poolBudget, totalHours];
+      let paramIdx = 4;
 
-    // Insert new shots
-    let createdShots: any[] = [];
-    if (shotRows.length > 0) {
-      const { data: insertedShots, error: sError } = await supabase
-        .from('version_shots')
-        .insert(shotRows)
-        .select();
+      if (notes !== undefined) {
+        setClauses.push(`notes = $${paramIdx}`);
+        params.push(notes);
+        paramIdx++;
+      }
 
-      if (sError) throw sError;
-      createdShots = insertedShots || [];
-    }
+      params.push(req.params.versionId);
+      const { rows: versionRows } = await client.query(
+        `UPDATE quote_versions SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
+        params,
+      );
+      const version = versionRows[0];
 
-    // Update version
-    const updateData: any = {
-      duration_seconds: dur,
-      pool_budget_hours: poolBudget,
-      total_hours: totalHours,
-    };
-    if (notes !== undefined) updateData.notes = notes;
+      // Update quote updated_at
+      await client.query(
+        `UPDATE quotes SET updated_at = NOW() WHERE id = $1`,
+        [req.params.id],
+      );
 
-    const { data: version, error: vError } = await supabase
-      .from('quote_versions')
-      .update(updateData)
-      .eq('id', req.params.versionId)
-      .select()
-      .single();
+      return { ...version, shots: createdShots };
+    });
 
-    if (vError) throw vError;
-
-    // Update quote updated_at
-    await supabase
-      .from('quotes')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', req.params.id);
-
-    res.json({ ...version, shots: createdShots });
+    res.json(result);
   } catch (err) {
-    logger.error('Failed to update version:', err);
-    res.status(500).json({ error: { message: 'Failed to update version' } });
+    const httpErr = err as HttpError;
+    if (httpErr.statusCode === 404) {
+      return res.status(404).json({ error: { message: httpErr.message } });
+    }
+    if (httpErr.statusCode === 400) {
+      return res.status(400).json({ error: { message: httpErr.message } });
+    }
+    return sendServerError(res, err, 'Failed to update version');
   }
 });
 

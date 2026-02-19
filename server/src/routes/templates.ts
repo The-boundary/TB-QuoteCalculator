@@ -1,214 +1,221 @@
 import { Router, type Request, type Response } from 'express';
-import { getSupabaseClient } from '../services/supabase.js';
-import { logger } from '../utils/logger.js';
+import { dbQuery, dbTransaction } from '../services/supabase.js';
+import { sendServerError, sendNotFound, httpError, type HttpError } from '../utils/route-helpers.js';
 import { validate, createTemplateSchema, updateTemplateSchema } from '../lib/validation.js';
 
 const router = Router();
 
-// GET /api/templates — list all templates with shots
+// ---------------------------------------------------------------------------
+// GET /api/templates -- list all templates with shots
+// ---------------------------------------------------------------------------
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
+    const { rows: templates } = await dbQuery(
+      `SELECT * FROM film_templates ORDER BY duration_seconds ASC`,
+    );
 
-    const { data: templates, error } = await supabase
-      .from('film_templates')
-      .select('*')
-      .order('duration_seconds', { ascending: true });
-
-    if (error) throw error;
-    if (!templates || templates.length === 0) return res.json([]);
+    if (templates.length === 0) return res.json([]);
 
     // Batch fetch all shots
-    const templateIds = templates.map((t: any) => t.id);
-    const { data: allShots } = await supabase
-      .from('film_template_shots')
-      .select('*')
-      .in('template_id', templateIds)
-      .order('sort_order', { ascending: true });
+    const templateIds = templates.map((t: { id: string }) => t.id);
+    const { rows: allShots } = await dbQuery(
+      `SELECT * FROM film_template_shots WHERE template_id = ANY($1) ORDER BY sort_order ASC`,
+      [templateIds],
+    );
 
-    const shotsByTemplate = new Map<string, any[]>();
-    for (const s of allShots || []) {
+    const shotsByTemplate = new Map<string, typeof allShots>();
+    for (const s of allShots) {
       const existing = shotsByTemplate.get(s.template_id);
       if (existing) existing.push(s);
       else shotsByTemplate.set(s.template_id, [s]);
     }
 
-    const enriched = templates.map((t: any) => ({
+    const enriched = templates.map((t: { id: string }) => ({
       ...t,
       shots: shotsByTemplate.get(t.id) || [],
     }));
 
     res.json(enriched);
   } catch (err) {
-    logger.error('Failed to list templates:', err);
-    res.status(500).json({ error: { message: 'Failed to list templates' } });
+    return sendServerError(res, err, 'Failed to list templates');
   }
 });
 
-// GET /api/templates/:id — get template with shots
+// ---------------------------------------------------------------------------
+// GET /api/templates/:id -- get template with shots
+// ---------------------------------------------------------------------------
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
+    const { rows: tRows } = await dbQuery(
+      `SELECT * FROM film_templates WHERE id = $1`,
+      [req.params.id],
+    );
+    const template = tRows[0];
+    if (!template) return sendNotFound(res, 'Template');
 
-    const { data: template, error } = await supabase
-      .from('film_templates')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
+    const { rows: shots } = await dbQuery(
+      `SELECT * FROM film_template_shots WHERE template_id = $1 ORDER BY sort_order`,
+      [req.params.id],
+    );
 
-    if (error) throw error;
-    if (!template) return res.status(404).json({ error: { message: 'Template not found' } });
-
-    const { data: shots } = await supabase
-      .from('film_template_shots')
-      .select('*')
-      .eq('template_id', req.params.id)
-      .order('sort_order');
-
-    res.json({ ...template, shots: shots || [] });
+    res.json({ ...template, shots });
   } catch (err) {
-    logger.error('Failed to get template:', err);
-    res.status(500).json({ error: { message: 'Failed to get template' } });
+    return sendServerError(res, err, 'Failed to get template');
   }
 });
 
-// POST /api/templates — create template (admin only)
+// ---------------------------------------------------------------------------
+// POST /api/templates -- create template (admin only)
+// ---------------------------------------------------------------------------
 router.post('/', async (req: Request, res: Response) => {
   try {
     if (!req.user?.appAccess?.is_admin) {
       return res.status(403).json({ error: { message: 'Admin access required' } });
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
-
     const parsed = validate(createTemplateSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { name, duration_seconds, description, rate_card_id, shots } = parsed.data;
 
-    const { data: template, error } = await supabase
-      .from('film_templates')
-      .insert({
-        name,
-        duration_seconds,
-        description: description || null,
-        rate_card_id: rate_card_id || null,
-        created_by: req.user.id,
-      })
-      .select()
-      .single();
+    const result = await dbTransaction(async (client) => {
+      const { rows: tRows } = await client.query(
+        `INSERT INTO film_templates (name, duration_seconds, description, rate_card_id, created_by)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [name, duration_seconds, description || null, rate_card_id || null, req.user!.id],
+      );
+      const template = tRows[0];
 
-    if (error) throw error;
+      const createdShots = [];
+      if (shots && shots.length > 0) {
+        for (let idx = 0; idx < shots.length; idx++) {
+          const s = shots[idx];
+          const { rows } = await client.query(
+            `INSERT INTO film_template_shots (template_id, shot_type, quantity, efficiency_multiplier, sort_order)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING *`,
+            [template.id, s.shot_type, s.quantity, s.efficiency_multiplier, s.sort_order ?? idx],
+          );
+          createdShots.push(rows[0]);
+        }
+      }
 
-    let createdShots: any[] = [];
-    if (shots && shots.length > 0) {
-      const shotRows = shots.map((s, idx) => ({
-        template_id: template.id,
-        shot_type: s.shot_type,
-        quantity: s.quantity,
-        efficiency_multiplier: s.efficiency_multiplier,
-        sort_order: s.sort_order ?? idx,
-      }));
-      const { data: insertedShots, error: sError } = await supabase
-        .from('film_template_shots')
-        .insert(shotRows)
-        .select();
-      if (sError) throw sError;
-      createdShots = insertedShots || [];
-    }
+      return { ...template, shots: createdShots };
+    });
 
-    res.status(201).json({ ...template, shots: createdShots });
+    res.status(201).json(result);
   } catch (err) {
-    logger.error('Failed to create template:', err);
-    res.status(500).json({ error: { message: 'Failed to create template' } });
+    return sendServerError(res, err, 'Failed to create template');
   }
 });
 
-// PUT /api/templates/:id — update template with shots (admin only)
+// ---------------------------------------------------------------------------
+// PUT /api/templates/:id -- update template with shots (admin only)
+// ---------------------------------------------------------------------------
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     if (!req.user?.appAccess?.is_admin) {
       return res.status(403).json({ error: { message: 'Admin access required' } });
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
-
     const parsed = validate(updateTemplateSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { name, duration_seconds, description, rate_card_id, shots } = parsed.data;
 
-    const updateData: any = { updated_at: new Date().toISOString() };
-    if (name !== undefined) updateData.name = name;
-    if (duration_seconds !== undefined) updateData.duration_seconds = duration_seconds;
-    if (description !== undefined) updateData.description = description;
-    if (rate_card_id !== undefined) updateData.rate_card_id = rate_card_id;
+    const result = await dbTransaction(async (client) => {
+      // Build dynamic SET clause for optional fields
+      const setClauses: string[] = ['updated_at = NOW()'];
+      const params: unknown[] = [];
+      let paramIdx = 1;
 
-    const { data: template, error } = await supabase
-      .from('film_templates')
-      .update(updateData)
-      .eq('id', req.params.id)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    // Replace shots if provided
-    let updatedShots: any[] = [];
-    if (shots !== undefined) {
-      await supabase.from('film_template_shots').delete().eq('template_id', req.params.id);
-
-      if (shots.length > 0) {
-        const shotRows = shots.map((s, idx) => ({
-          template_id: req.params.id,
-          shot_type: s.shot_type,
-          quantity: s.quantity,
-          efficiency_multiplier: s.efficiency_multiplier,
-          sort_order: s.sort_order ?? idx,
-        }));
-        const { data: insertedShots, error: sError } = await supabase
-          .from('film_template_shots')
-          .insert(shotRows)
-          .select();
-        if (sError) throw sError;
-        updatedShots = insertedShots || [];
+      if (name !== undefined) {
+        setClauses.push(`name = $${paramIdx}`);
+        params.push(name);
+        paramIdx++;
       }
-    } else {
-      // Return existing shots
-      const { data: existingShots } = await supabase
-        .from('film_template_shots')
-        .select('*')
-        .eq('template_id', req.params.id)
-        .order('sort_order');
-      updatedShots = existingShots || [];
-    }
+      if (duration_seconds !== undefined) {
+        setClauses.push(`duration_seconds = $${paramIdx}`);
+        params.push(duration_seconds);
+        paramIdx++;
+      }
+      if (description !== undefined) {
+        setClauses.push(`description = $${paramIdx}`);
+        params.push(description);
+        paramIdx++;
+      }
+      if (rate_card_id !== undefined) {
+        setClauses.push(`rate_card_id = $${paramIdx}`);
+        params.push(rate_card_id);
+        paramIdx++;
+      }
 
-    res.json({ ...template, shots: updatedShots });
+      params.push(req.params.id);
+      const { rows: tRows } = await client.query(
+        `UPDATE film_templates SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
+        params,
+      );
+      const template = tRows[0];
+      if (!template) throw httpError('Template not found', 404);
+
+      // Replace shots if provided
+      let updatedShots: unknown[] = [];
+      if (shots !== undefined) {
+        await client.query(
+          `DELETE FROM film_template_shots WHERE template_id = $1`,
+          [req.params.id],
+        );
+
+        if (shots.length > 0) {
+          for (let idx = 0; idx < shots.length; idx++) {
+            const s = shots[idx];
+            const { rows } = await client.query(
+              `INSERT INTO film_template_shots (template_id, shot_type, quantity, efficiency_multiplier, sort_order)
+               VALUES ($1, $2, $3, $4, $5)
+               RETURNING *`,
+              [req.params.id, s.shot_type, s.quantity, s.efficiency_multiplier, s.sort_order ?? idx],
+            );
+            updatedShots.push(rows[0]);
+          }
+        }
+      } else {
+        // Return existing shots
+        const { rows: existingShots } = await client.query(
+          `SELECT * FROM film_template_shots WHERE template_id = $1 ORDER BY sort_order`,
+          [req.params.id],
+        );
+        updatedShots = existingShots;
+      }
+
+      return { ...template, shots: updatedShots };
+    });
+
+    res.json(result);
   } catch (err) {
-    logger.error('Failed to update template:', err);
-    res.status(500).json({ error: { message: 'Failed to update template' } });
+    const httpErr = err as HttpError;
+    if (httpErr.statusCode === 404) {
+      return res.status(404).json({ error: { message: httpErr.message } });
+    }
+    return sendServerError(res, err, 'Failed to update template');
   }
 });
 
-// DELETE /api/templates/:id — delete template (admin only)
+// ---------------------------------------------------------------------------
+// DELETE /api/templates/:id -- delete template (admin only)
+// ---------------------------------------------------------------------------
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     if (!req.user?.appAccess?.is_admin) {
       return res.status(403).json({ error: { message: 'Admin access required' } });
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
+    await dbQuery(
+      `DELETE FROM film_templates WHERE id = $1`,
+      [req.params.id],
+    );
 
-    const { error } = await supabase.from('film_templates').delete().eq('id', req.params.id);
-
-    if (error) throw error;
     res.status(204).end();
   } catch (err) {
-    logger.error('Failed to delete template:', err);
-    res.status(500).json({ error: { message: 'Failed to delete template' } });
+    return sendServerError(res, err, 'Failed to delete template');
   }
 });
 
