@@ -12,6 +12,7 @@ import { useBuilderState } from './builder/useBuilderState';
 import { HourPoolBar } from './builder/HourPoolBar';
 import { ShotBreakdownTable } from './builder/ShotBreakdownTable';
 import { AddShotPicker } from './builder/AddShotPicker';
+import { ApplyTemplatePicker } from './builder/ApplyTemplatePicker';
 import { PostProductionSection } from './builder/PostProductionSection';
 import { TotalsSummary } from './builder/TotalsSummary';
 import { BudgetSuggestions } from './builder/BudgetSuggestions';
@@ -37,6 +38,7 @@ export function QuoteBuilderPage() {
   const createVersion = useCreateVersion();
 
   const [addShotOpen, setAddShotOpen] = useState(false);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const existingShotTypes = useMemo(
@@ -118,6 +120,13 @@ export function QuoteBuilderPage() {
                   {d}s
                 </Button>
               ))}
+              <div className="ml-2 border-l border-border pl-2">
+                <ApplyTemplatePicker
+                  onApply={builder.applyTemplate}
+                  open={templatePickerOpen}
+                  onOpenChange={setTemplatePickerOpen}
+                />
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <Label htmlFor="duration-input" className="text-sm text-muted-foreground whitespace-nowrap">

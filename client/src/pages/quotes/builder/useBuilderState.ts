@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import type { RateCardWithItems, QuoteVersionWithShots } from '../../../../../shared/types';
+import type { RateCardWithItems, QuoteVersionWithShots, FilmTemplateWithShots } from '../../../../../shared/types';
 
 export interface BuilderShot {
   shot_type: string;
@@ -157,6 +157,27 @@ export function useBuilderState(
     }));
   }, []);
 
+  const applyTemplate = useCallback(
+    (template: FilmTemplateWithShots) => {
+      const rateItems = rateCard?.items ?? [];
+      const rateMap = new Map(rateItems.map((ri) => [ri.shot_type.toLowerCase(), ri.hours]));
+
+      setState((prev) => ({
+        ...prev,
+        duration: template.duration_seconds,
+        shots: template.shots.map((ts, idx) => ({
+          shot_type: ts.shot_type,
+          quantity: ts.quantity,
+          base_hours_each: rateMap.get(ts.shot_type.toLowerCase()) ?? 0,
+          efficiency_multiplier: ts.efficiency_multiplier,
+          sort_order: idx,
+          selected: false,
+        })),
+      }));
+    },
+    [rateCard],
+  );
+
   const getPayload = useCallback(() => {
     return {
       duration_seconds: state.duration,
@@ -196,6 +217,7 @@ export function useBuilderState(
     toggleShotSelection,
     selectAll,
     deselectAll,
+    applyTemplate,
     getPayload,
   };
 }
