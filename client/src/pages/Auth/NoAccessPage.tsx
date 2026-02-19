@@ -19,9 +19,12 @@ export function NoAccessPage() {
             </div>
           </div>
           <p className="mt-6 text-sm text-muted-foreground">
-            Your account is authenticated but not assigned to Quote Calculator. Contact an admin to request access.
+            Your account is authenticated but not assigned to Quote Calculator. Contact an admin to
+            request access.
           </p>
-          <Button className="mt-6 w-full" variant="outline" onClick={() => signOut()}>Sign out</Button>
+          <Button className="mt-6 w-full" variant="outline" onClick={() => signOut()}>
+            Sign out
+          </Button>
         </CardContent>
       </Card>
     </div>

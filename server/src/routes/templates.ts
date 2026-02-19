@@ -158,10 +158,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     // Replace shots if provided
     let updatedShots: any[] = [];
     if (shots !== undefined) {
-      await supabase
-        .from('film_template_shots')
-        .delete()
-        .eq('template_id', req.params.id);
+      await supabase.from('film_template_shots').delete().eq('template_id', req.params.id);
 
       if (shots.length > 0) {
         const shotRows = shots.map((s, idx) => ({
@@ -205,10 +202,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     const supabase = getSupabaseClient();
     if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
 
-    const { error } = await supabase
-      .from('film_templates')
-      .delete()
-      .eq('id', req.params.id);
+    const { error } = await supabase.from('film_templates').delete().eq('id', req.params.id);
 
     if (error) throw error;
     res.status(204).end();

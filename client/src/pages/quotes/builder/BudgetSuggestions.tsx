@@ -5,7 +5,6 @@ import type { RateCardItem } from '../../../../../shared/types';
 interface BudgetSuggestionsProps {
   remaining: number;
   rateCardItems: RateCardItem[];
-  existingShotTypes: string[];
 }
 
 interface Suggestion {
@@ -14,11 +13,7 @@ interface Suggestion {
   total_hours: number;
 }
 
-export function BudgetSuggestions({
-  remaining,
-  rateCardItems,
-  existingShotTypes,
-}: BudgetSuggestionsProps) {
+export function BudgetSuggestions({ remaining, rateCardItems }: BudgetSuggestionsProps) {
   const suggestions = useMemo(() => {
     if (remaining <= 0 || rateCardItems.length === 0) return [];
 
@@ -39,7 +34,7 @@ export function BudgetSuggestions({
     // Sort by total hours descending (most budget-filling first), take top 3
     results.sort((a, b) => b.total_hours - a.total_hours);
     return results.slice(0, 3);
-  }, [remaining, rateCardItems, existingShotTypes]);
+  }, [remaining, rateCardItems]);
 
   if (suggestions.length === 0) return null;
 

@@ -1,5 +1,9 @@
 import { useState, useMemo, useCallback } from 'react';
-import type { RateCardWithItems, QuoteVersionWithShots, FilmTemplateWithShots } from '../../../../../shared/types';
+import type {
+  RateCardWithItems,
+  QuoteVersionWithShots,
+  FilmTemplateWithShots,
+} from '../../../../../shared/types';
 
 export interface BuilderShot {
   shot_type: string;
@@ -60,15 +64,9 @@ export function useBuilderState(
     [state.shots],
   );
 
-  const totalHours = useMemo(
-    () => totalShotHours + editingHours,
-    [totalShotHours, editingHours],
-  );
+  const totalHours = useMemo(() => totalShotHours + editingHours, [totalShotHours, editingHours]);
 
-  const remaining = useMemo(
-    () => poolBudgetHours - totalHours,
-    [poolBudgetHours, totalHours],
-  );
+  const remaining = useMemo(() => poolBudgetHours - totalHours, [poolBudgetHours, totalHours]);
 
   // --- Actions ---
 
@@ -107,9 +105,7 @@ export function useBuilderState(
   const updateQuantity = useCallback((index: number, qty: number) => {
     setState((prev) => ({
       ...prev,
-      shots: prev.shots.map((s, i) =>
-        i === index ? { ...s, quantity: Math.max(1, qty) } : s,
-      ),
+      shots: prev.shots.map((s, i) => (i === index ? { ...s, quantity: Math.max(1, qty) } : s)),
     }));
   }, []);
 
@@ -117,9 +113,7 @@ export function useBuilderState(
     setState((prev) => ({
       ...prev,
       shots: prev.shots.map((s, i) =>
-        i === index
-          ? { ...s, efficiency_multiplier: Math.min(5.0, Math.max(0.1, multiplier)) }
-          : s,
+        i === index ? { ...s, efficiency_multiplier: Math.min(5.0, Math.max(0.1, multiplier)) } : s,
       ),
     }));
   }, []);
@@ -137,9 +131,7 @@ export function useBuilderState(
   const toggleShotSelection = useCallback((index: number) => {
     setState((prev) => ({
       ...prev,
-      shots: prev.shots.map((s, i) =>
-        i === index ? { ...s, selected: !s.selected } : s,
-      ),
+      shots: prev.shots.map((s, i) => (i === index ? { ...s, selected: !s.selected } : s)),
     }));
   }, []);
 

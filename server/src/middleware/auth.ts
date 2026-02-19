@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { getAuthSupabaseClient } from '../services/supabase.js';
+import { config } from '../config.js';
 
 const APP_SLUG = process.env.APP_SLUG || 'quote-calculator';
 
@@ -81,12 +82,19 @@ const ensureAppAccess = async (userId: string): Promise<AppAccess> => {
   return data as AppAccess;
 };
 
-export const requireAuth = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (config.devAuthBypass) {
+      req.user = {
+        id: '00000000-0000-0000-0000-000000000000',
+        email: 'dev@the-boundary.com',
+        role: 'admin',
+        aud: 'authenticated',
+        appAccess: { role_slug: 'admin', is_admin: true },
+      };
+      return next();
+    }
+
     const serviceTokenEnv = process.env.SERVICE_API_TOKEN;
     const rawServiceToken = (req.headers['x-service-api-token'] ||
       req.headers['x-service-token'] ||
@@ -95,11 +103,7 @@ export const requireAuth = async (
       ? rawServiceToken[0]
       : rawServiceToken;
 
-    if (
-      serviceTokenEnv &&
-      providedServiceToken &&
-      providedServiceToken === serviceTokenEnv
-    ) {
+    if (serviceTokenEnv && providedServiceToken && providedServiceToken === serviceTokenEnv) {
       req.user = {
         id: '00000000-0000-0000-0000-000000000001',
         email: 'service@local.internal',
@@ -112,15 +116,11 @@ export const requireAuth = async (
 
     const token = extractToken(req);
     if (!token)
-      return res
-        .status(401)
-        .json({ error: { message: 'No authentication token provided' } });
+      return res.status(401).json({ error: { message: 'No authentication token provided' } });
 
     const decoded = verifySupabaseToken(token);
     if (!isEmailDomainAllowed(decoded.email))
-      return res
-        .status(403)
-        .json({ error: { message: 'Email domain not allowed' } });
+      return res.status(403).json({ error: { message: 'Email domain not allowed' } });
 
     req.user = {
       id: decoded.sub,
@@ -137,8 +137,7 @@ export const requireAuth = async (
     } catch (error) {
       return res.status(403).json({
         error: {
-          message:
-            error instanceof Error ? error.message : 'Access denied',
+          message: error instanceof Error ? error.message : 'Access denied',
         },
       });
     }

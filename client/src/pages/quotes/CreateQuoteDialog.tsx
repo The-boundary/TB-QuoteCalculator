@@ -113,7 +113,8 @@ export function CreateQuoteDialog({ open, onOpenChange }: CreateQuoteDialogProps
                 <SelectContent>
                   {rateCards?.map((rc) => (
                     <SelectItem key={rc.id} value={rc.id}>
-                      {rc.name}{rc.is_default ? ' (Default)' : ''}
+                      {rc.name}
+                      {rc.is_default ? ' (Default)' : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -122,17 +123,10 @@ export function CreateQuoteDialog({ open, onOpenChange }: CreateQuoteDialogProps
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={!canSubmit || createQuote.isPending}
-            >
+            <Button type="submit" disabled={!canSubmit || createQuote.isPending}>
               {createQuote.isPending ? 'Creating...' : 'Create Quote'}
             </Button>
           </DialogFooter>

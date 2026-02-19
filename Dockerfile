@@ -36,8 +36,8 @@ ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 ENV VITE_APP_SLUG=$VITE_APP_SLUG
 ENV GIT_COMMIT_HASH=$GIT_COMMIT_HASH
 
-# Build client (skip tsc type check, just use vite)
-RUN cd client && npx vite build
+# Type-check and build client
+RUN cd client && npx tsc --noEmit && npx vite build
 
 # Stage 2: Build server and shared together
 FROM node:20-alpine AS server-builder

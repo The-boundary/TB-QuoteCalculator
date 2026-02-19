@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type {
-  RateCard,
-  VersionShot,
-  QuoteStatus,
-} from './index';
+import type { RateCard, VersionShot, QuoteStatus } from './index';
 
 describe('shared types', () => {
   it('QuoteStatus allows valid statuses', () => {

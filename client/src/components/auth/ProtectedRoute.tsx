@@ -14,7 +14,8 @@ export function ProtectedRoute() {
   }
 
   if (!user) {
-    window.location.replace('https://the-boundary.app');
+    const homescreen = import.meta.env.DEV ? '/auth/login' : 'https://the-boundary.app';
+    window.location.replace(homescreen);
     return (
       <div className="min-h-screen bg-sb-bg text-sb-text flex items-center justify-center">
         <div className="text-sm text-sb-text-muted">Redirecting to login...</div>

@@ -41,10 +41,7 @@ export function QuoteBuilderPage() {
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const existingShotTypes = useMemo(
-    () => builder.shots.map((s) => s.shot_type),
-    [builder.shots],
-  );
+  const existingShotTypes = useMemo(() => builder.shots.map((s) => s.shot_type), [builder.shots]);
 
   const handleSave = useCallback(async () => {
     if (!id) return;
@@ -68,25 +65,21 @@ export function QuoteBuilderPage() {
 
   if (quoteLoading || rateCardLoading) {
     return (
-      <>
-        <div className="flex items-center justify-center py-20">
-          <div className="text-sm text-muted-foreground">Loading builder...</div>
-        </div>
-      </>
+      <div className="flex items-center justify-center py-20">
+        <div className="text-sm text-muted-foreground">Loading builder...</div>
+      </div>
     );
   }
 
   if (!quote) {
     return (
-      <>
-        <div className="flex items-center justify-center py-20">
-          <div className="text-sm text-muted-foreground">Quote not found.</div>
-        </div>
-      </>
+      <div className="flex items-center justify-center py-20">
+        <div className="text-sm text-muted-foreground">Quote not found.</div>
+      </div>
     );
   }
 
-  const versionNumber = existingVersion?.version_number ?? (quote.versions.length + 1);
+  const versionNumber = existingVersion?.version_number ?? quote.versions.length + 1;
 
   return (
     <>
@@ -129,7 +122,10 @@ export function QuoteBuilderPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Label htmlFor="duration-input" className="text-sm text-muted-foreground whitespace-nowrap">
+              <Label
+                htmlFor="duration-input"
+                className="text-sm text-muted-foreground whitespace-nowrap"
+              >
                 Custom (seconds):
               </Label>
               <Input
@@ -188,11 +184,7 @@ export function QuoteBuilderPage() {
         />
 
         {/* Budget Suggestions */}
-        <BudgetSuggestions
-          remaining={builder.remaining}
-          rateCardItems={rateCard?.items ?? []}
-          existingShotTypes={existingShotTypes}
-        />
+        <BudgetSuggestions remaining={builder.remaining} rateCardItems={rateCard?.items ?? []} />
 
         {/* Notes */}
         <Card>

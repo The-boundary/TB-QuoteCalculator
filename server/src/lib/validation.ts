@@ -81,7 +81,10 @@ export const updateTemplateSchema = z.object({
   shots: z.array(templateShotSchema).max(100).optional(),
 });
 
-export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; error: string } {
+export function validate<T>(
+  schema: z.ZodSchema<T>,
+  data: unknown,
+): { success: true; data: T } | { success: false; error: string } {
   const result = schema.safeParse(data);
   if (!result.success) {
     const messages = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');

@@ -22,9 +22,7 @@ export function SettingsPage() {
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="border-border/60 bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Interface
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Interface</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-0">
             <div className="flex items-center justify-between rounded-md border border-border/40 bg-card/50 px-3 py-3">
@@ -73,9 +71,7 @@ export function SettingsPage() {
 
         <Card className="border-border/60 bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Account
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Account</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-0">
             <div className="rounded-md border border-border/40 bg-card/50 px-3 py-3">
@@ -83,9 +79,7 @@ export function SettingsPage() {
                 <UserRound className="h-4 w-4 text-[#5acfd9]" />
                 Signed-in account
               </div>
-              <p className="text-sm text-muted-foreground">
-                {user?.email || 'No email available'}
-              </p>
+              <p className="text-sm text-muted-foreground">{user?.email || 'No email available'}</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 Role: {access?.role_name || access?.role_slug || 'Unassigned'}
               </p>

@@ -31,7 +31,9 @@ router.get('/', async (_req: Request, res: Response) => {
     const quoteIds = quotes.map((q: any) => q.id);
     const { data: allVersions } = await supabase
       .from('quote_versions')
-      .select('id, quote_id, version_number, duration_seconds, pool_budget_hours, total_hours, created_at')
+      .select(
+        'id, quote_id, version_number, duration_seconds, pool_budget_hours, total_hours, created_at',
+      )
       .in('quote_id', quoteIds)
       .order('version_number', { ascending: false });
 
@@ -90,18 +92,29 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     if (vError) throw vError;
 
-    // Get shots for each version
-    const versionsWithShots = await Promise.all(
-      (versions || []).map(async (version: any) => {
-        const { data: shots } = await supabase
-          .from('version_shots')
-          .select('*')
-          .eq('version_id', version.id)
-          .order('sort_order');
+    // Batch fetch all shots for all versions (single query instead of N+1)
+    const versionIds = (versions || []).map((v: any) => v.id);
+    let allShots: any[] = [];
+    if (versionIds.length > 0) {
+      const { data: shotsData } = await supabase
+        .from('version_shots')
+        .select('*')
+        .in('version_id', versionIds)
+        .order('sort_order');
+      allShots = shotsData || [];
+    }
 
-        return { ...version, shots: shots || [] };
-      })
-    );
+    const shotsByVersion = new Map<string, any[]>();
+    for (const shot of allShots) {
+      const existing = shotsByVersion.get(shot.version_id);
+      if (existing) existing.push(shot);
+      else shotsByVersion.set(shot.version_id, [shot]);
+    }
+
+    const versionsWithShots = (versions || []).map((version: any) => ({
+      ...version,
+      shots: shotsByVersion.get(version.id) || [],
+    }));
 
     res.json({ ...quote, rate_card: rateCard, versions: versionsWithShots });
   } catch (err) {
@@ -208,12 +221,9 @@ router.put('/:id/status', async (req: Request, res: Response) => {
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { status } = parsed.data;
 
-    // Approval requires Approver or Admin role
+    // Approval requires Admin role
     if (status === 'approved' && !req.user?.appAccess?.is_admin) {
-      const role = req.user?.appAccess?.role_slug;
-      if (role !== 'approver' && role !== 'admin') {
-        return res.status(403).json({ error: { message: 'Only approvers or admins can approve quotes' } });
-      }
+      return res.status(403).json({ error: { message: 'Only admins can approve quotes' } });
     }
 
     const { data, error } = await supabase
@@ -299,7 +309,8 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
       quantity: shot.quantity || 1,
       base_hours_each: shot.base_hours_each,
       efficiency_multiplier: shot.efficiency_multiplier || 1.0,
-      adjusted_hours: (shot.base_hours_each || 0) * (shot.quantity || 1) * (shot.efficiency_multiplier || 1.0),
+      adjusted_hours:
+        (shot.base_hours_each || 0) * (shot.quantity || 1) * (shot.efficiency_multiplier || 1.0),
       sort_order: shot.sort_order ?? idx,
     }));
 
@@ -387,7 +398,8 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
       quantity: shot.quantity || 1,
       base_hours_each: shot.base_hours_each,
       efficiency_multiplier: shot.efficiency_multiplier || 1.0,
-      adjusted_hours: (shot.base_hours_each || 0) * (shot.quantity || 1) * (shot.efficiency_multiplier || 1.0),
+      adjusted_hours:
+        (shot.base_hours_each || 0) * (shot.quantity || 1) * (shot.efficiency_multiplier || 1.0),
       sort_order: shot.sort_order ?? idx,
     }));
 
@@ -395,10 +407,7 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
     const totalHours = totalShotHours + editingHours;
 
     // Delete existing shots
-    await supabase
-      .from('version_shots')
-      .delete()
-      .eq('version_id', req.params.versionId);
+    await supabase.from('version_shots').delete().eq('version_id', req.params.versionId);
 
     // Insert new shots
     let createdShots: any[] = [];

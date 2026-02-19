@@ -35,8 +35,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use((req, _res, next) => {
-  req.headers['x-request-id'] =
-    req.headers['x-request-id'] || crypto.randomUUID();
+  req.headers['x-request-id'] = req.headers['x-request-id'] || crypto.randomUUID();
   next();
 });
 

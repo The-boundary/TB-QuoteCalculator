@@ -4,24 +4,20 @@ import { Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatDate } from '@/lib/utils';
 import { useArchiveQuote, type QuoteListItem } from '@/hooks/useQuotes';
 import type { QuoteStatus } from '../../../../shared/types';
 
-const STATUS_CONFIG: Record<QuoteStatus, { label: string; variant: 'secondary' | 'warning' | 'success' | 'info' | 'outline' }> = {
+const STATUS_CONFIG: Record<
+  QuoteStatus,
+  { label: string; variant: 'secondary' | 'warning' | 'success' | 'info' | 'outline' }
+> = {
   draft: { label: 'Draft', variant: 'secondary' },
   pending_approval: { label: 'Pending Approval', variant: 'warning' },
   approved: { label: 'Approved', variant: 'success' },
   sent: { label: 'Sent', variant: 'info' },
   archived: { label: 'Archived', variant: 'outline' },
 };
-
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
 
 interface QuoteCardProps {
   quote: QuoteListItem;
@@ -56,18 +52,10 @@ export function QuoteCard({ quote }: QuoteCardProps) {
   );
 
   const deleteLabel =
-    deleteClicks === 0
-      ? undefined
-      : deleteClicks === 1
-        ? 'Click 2 more'
-        : 'Click to confirm';
+    deleteClicks === 0 ? undefined : deleteClicks === 1 ? 'Click 2 more' : 'Click to confirm';
 
   const deleteVariant =
-    deleteClicks === 0
-      ? 'ghost'
-      : deleteClicks === 1
-        ? 'outline'
-        : 'destructive';
+    deleteClicks === 0 ? 'ghost' : deleteClicks === 1 ? 'outline' : 'destructive';
 
   return (
     <Card
@@ -106,11 +94,15 @@ export function QuoteCard({ quote }: QuoteCardProps) {
         <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
           {quote.latest_version && (
             <span>
-              v{quote.latest_version.version_number} &middot; {quote.latest_version.duration_seconds}s &middot; {quote.latest_version.total_hours} hrs
+              v{quote.latest_version.version_number} &middot;{' '}
+              {quote.latest_version.duration_seconds}s &middot; {quote.latest_version.total_hours}{' '}
+              hrs
             </span>
           )}
           <div className="flex items-center justify-between">
-            <span>{quote.version_count} {quote.version_count === 1 ? 'version' : 'versions'}</span>
+            <span>
+              {quote.version_count} {quote.version_count === 1 ? 'version' : 'versions'}
+            </span>
             <span>{formatDate(quote.created_at)}</span>
           </div>
         </div>

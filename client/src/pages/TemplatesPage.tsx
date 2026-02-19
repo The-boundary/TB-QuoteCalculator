@@ -25,6 +25,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { useAuth } from '@/context/AuthContext';
+import { formatDuration } from '@/lib/utils';
 import {
   useTemplates,
   useCreateTemplate,
@@ -33,17 +34,6 @@ import {
 } from '@/hooks/useTemplates';
 import { useRateCards } from '@/hooks/useRateCards';
 import type { FilmTemplateWithShots, FilmTemplateShot } from '../../../shared/types';
-
-// ── Duration helpers ─────────────────────────────────────────
-
-function formatDuration(seconds: number): string {
-  if (seconds >= 60) {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-  }
-  return `${seconds}s`;
-}
 
 // ── Shot Row (editable inline) ──────────────────────────────
 
@@ -90,7 +80,9 @@ function ShotRow({ shot, isAdmin, onUpdate, onRemove, index }: ShotRowProps) {
             min="0.1"
             max="5.0"
             value={shot.efficiency_multiplier}
-            onChange={(e) => onUpdate(index, 'efficiency_multiplier', parseFloat(e.target.value) || 1)}
+            onChange={(e) =>
+              onUpdate(index, 'efficiency_multiplier', parseFloat(e.target.value) || 1)
+            }
             className="h-8 w-20"
           />
         ) : (
@@ -99,11 +91,7 @@ function ShotRow({ shot, isAdmin, onUpdate, onRemove, index }: ShotRowProps) {
       </TableCell>
       <TableCell>
         {isAdmin && (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={() => onRemove(index)}
-          >
+          <Button size="icon-sm" variant="ghost" onClick={() => onRemove(index)}>
             <Trash2 className="h-3 w-3 text-destructive" />
           </Button>
         )}
@@ -140,7 +128,8 @@ function TemplateDialog({ open, onOpenChange, template }: TemplateDialogProps) {
     }
   }, [open, template]);
 
-  const canSubmit = name.trim() !== '' && duration !== '' && !isNaN(Number(duration)) && Number(duration) > 0;
+  const canSubmit =
+    name.trim() !== '' && duration !== '' && !isNaN(Number(duration)) && Number(duration) > 0;
   const isPending = createTemplate.isPending || updateTemplate.isPending;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -169,9 +158,7 @@ function TemplateDialog({ open, onOpenChange, template }: TemplateDialogProps) {
           <DialogHeader>
             <DialogTitle>{isEdit ? 'Edit Template' : 'New Template'}</DialogTitle>
             <DialogDescription>
-              {isEdit
-                ? 'Update template metadata.'
-                : 'Create a new film template.'}
+              {isEdit ? 'Update template metadata.' : 'Create a new film template.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -385,19 +372,11 @@ function TemplateCard({ template, isAdmin, onEdit, onDelete }: TemplateCardProps
 
           {isAdmin && (
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => onEdit(template)}
-              >
+              <Button size="sm" variant="ghost" onClick={() => onEdit(template)}>
                 <Pencil className="h-3 w-3" />
                 Edit
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => onDelete(template)}
-              >
+              <Button size="sm" variant="ghost" onClick={() => onDelete(template)}>
                 <Trash2 className="h-3 w-3 text-destructive" />
               </Button>
             </div>
@@ -444,11 +423,7 @@ function TemplateCard({ template, isAdmin, onEdit, onDelete }: TemplateCardProps
                 Add Shot
               </Button>
               {dirty && (
-                <Button
-                  size="sm"
-                  onClick={handleSaveShots}
-                  disabled={updateTemplate.isPending}
-                >
+                <Button size="sm" onClick={handleSaveShots} disabled={updateTemplate.isPending}>
                   {updateTemplate.isPending ? 'Saving...' : 'Save Shots'}
                 </Button>
               )}
@@ -551,11 +526,7 @@ export function TemplatesPage() {
         )}
       </div>
 
-      <TemplateDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        template={editingTemplate}
-      />
+      <TemplateDialog open={dialogOpen} onOpenChange={setDialogOpen} template={editingTemplate} />
 
       <DeleteDialog
         open={deleteDialogOpen}

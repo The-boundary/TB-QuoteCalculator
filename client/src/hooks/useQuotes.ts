@@ -1,9 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Quote, QuoteWithVersions, QuoteVersionWithShots, QuoteStatus } from '../../../shared/types';
+import type {
+  Quote,
+  QuoteWithVersions,
+  QuoteVersionWithShots,
+  QuoteStatus,
+} from '../../../shared/types';
 
 export interface QuoteListItem extends Quote {
-  latest_version: { id: string; version_number: number; duration_seconds: number; pool_budget_hours: number; total_hours: number } | null;
+  latest_version: {
+    id: string;
+    version_number: number;
+    duration_seconds: number;
+    pool_budget_hours: number;
+    total_hours: number;
+  } | null;
   version_count: number;
 }
 
@@ -66,7 +77,10 @@ export function useArchiveQuote() {
 export function useCreateVersion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ quoteId, ...body }: {
+    mutationFn: ({
+      quoteId,
+      ...body
+    }: {
       quoteId: string;
       duration_seconds: number;
       notes?: string;
@@ -88,7 +102,11 @@ export function useCreateVersion() {
 export function useUpdateVersion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ quoteId, versionId, ...body }: {
+    mutationFn: ({
+      quoteId,
+      versionId,
+      ...body
+    }: {
       quoteId: string;
       versionId: string;
       duration_seconds: number;

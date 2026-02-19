@@ -4,28 +4,25 @@ import { AppShell } from './components/layout/AppShell';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 const LoginPage = lazy(() =>
-  import('./pages/Auth/LoginPage').then((m) => ({ default: m.LoginPage }))
-);
-const NoAccessPage = lazy(() =>
-  import('./pages/Auth/NoAccessPage').then((m) => ({ default: m.NoAccessPage }))
+  import('./pages/Auth/LoginPage').then((m) => ({ default: m.LoginPage })),
 );
 const QuotesListPage = lazy(() =>
-  import('./pages/quotes/QuotesListPage').then((m) => ({ default: m.QuotesListPage }))
+  import('./pages/quotes/QuotesListPage').then((m) => ({ default: m.QuotesListPage })),
 );
 const QuoteDetailPage = lazy(() =>
-  import('./pages/quotes/QuoteDetailPage').then((m) => ({ default: m.QuoteDetailPage }))
+  import('./pages/quotes/QuoteDetailPage').then((m) => ({ default: m.QuoteDetailPage })),
 );
 const QuoteBuilderPage = lazy(() =>
-  import('./pages/quotes/QuoteBuilderPage').then((m) => ({ default: m.QuoteBuilderPage }))
+  import('./pages/quotes/QuoteBuilderPage').then((m) => ({ default: m.QuoteBuilderPage })),
 );
 const RateCardsPage = lazy(() =>
-  import('./pages/RateCardsPage').then((m) => ({ default: m.RateCardsPage }))
+  import('./pages/RateCardsPage').then((m) => ({ default: m.RateCardsPage })),
 );
 const SettingsPage = lazy(() =>
-  import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage }))
+  import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
 const TemplatesPage = lazy(() =>
-  import('./pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage }))
+  import('./pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage })),
 );
 
 function RouteFallback() {
@@ -50,7 +47,6 @@ export function App() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/auth/login" element={<LoginPage />} />
-        <Route path="/no-access" element={<NoAccessPage />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShellLayout />}>
             <Route path="/" element={<QuotesListPage />} />

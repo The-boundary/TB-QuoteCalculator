@@ -39,8 +39,7 @@ export function QuotesListPage() {
     if (term) {
       result = result.filter(
         (q) =>
-          q.client_name.toLowerCase().includes(term) ||
-          q.project_name.toLowerCase().includes(term),
+          q.client_name.toLowerCase().includes(term) || q.project_name.toLowerCase().includes(term),
       );
     }
 

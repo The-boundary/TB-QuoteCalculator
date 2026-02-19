@@ -78,10 +78,7 @@ function RateCardDialog({ open, onOpenChange, rateCard }: RateCardDialogProps) {
     }
   }, [open, rateCard]);
 
-  const canSubmit =
-    name.trim() !== '' &&
-    hoursPerSecond !== '' &&
-    !isNaN(Number(hoursPerSecond));
+  const canSubmit = name.trim() !== '' && hoursPerSecond !== '' && !isNaN(Number(hoursPerSecond));
 
   const isPending = createRateCard.isPending || updateRateCard.isPending;
 
@@ -111,9 +108,7 @@ function RateCardDialog({ open, onOpenChange, rateCard }: RateCardDialogProps) {
           <DialogHeader>
             <DialogTitle>{isEdit ? 'Edit Rate Card' : 'New Rate Card'}</DialogTitle>
             <DialogDescription>
-              {isEdit
-                ? 'Update rate card metadata.'
-                : 'Create a new production rate card.'}
+              {isEdit ? 'Update rate card metadata.' : 'Create a new production rate card.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -156,11 +151,7 @@ function RateCardDialog({ open, onOpenChange, rateCard }: RateCardDialogProps) {
             </div>
 
             <div className="flex items-center gap-3">
-              <Switch
-                id="rc-default"
-                checked={isDefault}
-                onCheckedChange={setIsDefault}
-              />
+              <Switch id="rc-default" checked={isDefault} onCheckedChange={setIsDefault} />
               <Label htmlFor="rc-default">Set as default rate card</Label>
             </div>
           </div>
@@ -240,7 +231,10 @@ function ItemRow({ item, rateCardId, isAdmin }: ItemRowProps) {
           />
         </TableCell>
         <TableCell>
-          <Select value={category} onValueChange={(v) => setCategory(v as RateCardItem['category'])}>
+          <Select
+            value={category}
+            onValueChange={(v) => setCategory(v as RateCardItem['category'])}
+          >
             <SelectTrigger className="h-8">
               <SelectValue />
             </SelectTrigger>
@@ -521,16 +515,9 @@ function RateCardRow({ rateCard, isAdmin, onEdit }: RateCardRowProps) {
                   </TableRow>
                 )}
                 {items.map((item) => (
-                  <ItemRow
-                    key={item.id}
-                    item={item}
-                    rateCardId={rateCard.id}
-                    isAdmin={isAdmin}
-                  />
+                  <ItemRow key={item.id} item={item} rateCardId={rateCard.id} isAdmin={isAdmin} />
                 ))}
-                {isAdmin && (
-                  <AddItemRow rateCardId={rateCard.id} nextSortOrder={nextSortOrder} />
-                )}
+                {isAdmin && <AddItemRow rateCardId={rateCard.id} nextSortOrder={nextSortOrder} />}
               </TableBody>
             </Table>
           )}
@@ -612,22 +599,13 @@ export function RateCardsPage() {
         ) : (
           <div className="space-y-4">
             {rateCards.map((rc) => (
-              <RateCardRow
-                key={rc.id}
-                rateCard={rc}
-                isAdmin={isAdmin}
-                onEdit={handleEdit}
-              />
+              <RateCardRow key={rc.id} rateCard={rc} isAdmin={isAdmin} onEdit={handleEdit} />
             ))}
           </div>
         )}
       </div>
 
-      <RateCardDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        rateCard={editingCard}
-      />
+      <RateCardDialog open={dialogOpen} onOpenChange={setDialogOpen} rateCard={editingCard} />
     </>
   );
 }

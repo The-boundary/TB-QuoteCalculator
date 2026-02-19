@@ -96,15 +96,25 @@ async function run() {
     `);
 
     // ── Indexes ─────────────────────────────────────────────
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_rate_card_items_card ON quote_calculator.rate_card_items(rate_card_id)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_quotes_created_at ON quote_calculator.quotes(created_at DESC)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_quotes_status ON quote_calculator.quotes(status)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_quote_versions_quote ON quote_calculator.quote_versions(quote_id)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_version_shots_version ON quote_calculator.version_shots(version_id)`);
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS idx_rate_card_items_card ON quote_calculator.rate_card_items(rate_card_id)`,
+    );
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS idx_quotes_created_at ON quote_calculator.quotes(created_at DESC)`,
+    );
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS idx_quotes_status ON quote_calculator.quotes(status)`,
+    );
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS idx_quote_versions_quote ON quote_calculator.quote_versions(quote_id)`,
+    );
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS idx_version_shots_version ON quote_calculator.version_shots(version_id)`,
+    );
 
     // ── Seed: DHRE 2025 rate card ───────────────────────────
     const existing = await client.query(
-      `SELECT id FROM quote_calculator.rate_cards WHERE name = 'DHRE 2025' LIMIT 1`
+      `SELECT id FROM quote_calculator.rate_cards WHERE name = 'DHRE 2025' LIMIT 1`,
     );
 
     if (existing.rows.length === 0) {
@@ -116,13 +126,28 @@ async function run() {
       const rateCardId = rcResult.rows[0].id;
 
       const items = [
-        { shot_type: 'Site/Masterplan Overview (wide)', category: 'scene', hours: 80, sort_order: 1 },
+        {
+          shot_type: 'Site/Masterplan Overview (wide)',
+          category: 'scene',
+          hours: 80,
+          sort_order: 1,
+        },
         { shot_type: 'Aerial Exterior View', category: 'scene', hours: 60, sort_order: 2 },
         { shot_type: 'Semi-Aerial Exterior View', category: 'scene', hours: 60, sort_order: 3 },
         { shot_type: 'Street-Level Exterior', category: 'scene', hours: 40, sort_order: 4 },
         { shot_type: 'Interior View', category: 'scene', hours: 40, sort_order: 5 },
-        { shot_type: 'Animation from Image (simple)', category: 'animation', hours: 16, sort_order: 6 },
-        { shot_type: 'Animation from Image (complex)', category: 'animation', hours: 32, sort_order: 7 },
+        {
+          shot_type: 'Animation from Image (simple)',
+          category: 'animation',
+          hours: 16,
+          sort_order: 6,
+        },
+        {
+          shot_type: 'Animation from Image (complex)',
+          category: 'animation',
+          hours: 32,
+          sort_order: 7,
+        },
         { shot_type: 'Cinemagraph', category: 'animation', hours: 12, sort_order: 8 },
         { shot_type: 'VFX Shot (pre-built)', category: 'animation', hours: 32, sort_order: 9 },
         { shot_type: 'Material Board (regular)', category: 'material', hours: 20, sort_order: 10 },
@@ -134,7 +159,7 @@ async function run() {
         await client.query(
           `INSERT INTO quote_calculator.rate_card_items (rate_card_id, shot_type, category, hours, sort_order)
            VALUES ($1, $2, $3, $4, $5)`,
-          [rateCardId, item.shot_type, item.category, item.hours, item.sort_order]
+          [rateCardId, item.shot_type, item.category, item.hours, item.sort_order],
         );
       }
 

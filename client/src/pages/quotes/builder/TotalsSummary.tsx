@@ -59,9 +59,7 @@ function Row({
       <span className={cn('text-muted-foreground', bold && 'font-semibold text-foreground')}>
         {label}
       </span>
-      <span className={cn('tabular-nums', bold && 'font-semibold', className)}>
-        {value}
-      </span>
+      <span className={cn('tabular-nums', bold && 'font-semibold', className)}>{value}</span>
     </div>
   );
 }

@@ -61,9 +61,7 @@ export function ShotRow({
       </TableCell>
 
       {/* Hrs/ea */}
-      <TableCell className="tabular-nums text-muted-foreground">
-        {shot.base_hours_each}
-      </TableCell>
+      <TableCell className="tabular-nums text-muted-foreground">{shot.base_hours_each}</TableCell>
 
       {/* Efficiency */}
       <TableCell>

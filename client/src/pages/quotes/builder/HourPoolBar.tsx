@@ -12,11 +12,7 @@ export function HourPoolBar({ used, budget }: HourPoolBarProps) {
   const isOver = remaining < 0;
 
   const barColor =
-    percentage > 100
-      ? 'bg-red-500'
-      : percentage >= 80
-        ? 'bg-amber-500'
-        : 'bg-emerald-500';
+    percentage > 100 ? 'bg-red-500' : percentage >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
 
   const textColor = isOver ? 'text-red-400' : 'text-emerald-400';
 
@@ -24,7 +20,10 @@ export function HourPoolBar({ used, budget }: HourPoolBarProps) {
     <div className="space-y-2">
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">
-          Hour Pool: <span className="text-foreground font-medium">{used.toFixed(1)} / {budget.toFixed(1)} hrs</span>
+          Hour Pool:{' '}
+          <span className="text-foreground font-medium">
+            {used.toFixed(1)} / {budget.toFixed(1)} hrs
+          </span>
         </span>
         <span className={cn('font-medium', textColor)}>
           {isOver

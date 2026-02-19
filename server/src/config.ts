@@ -15,6 +15,7 @@ const envSchema = z.object({
   APP_SLUG: z.string().default('quote-calculator'),
   CORS_ORIGIN: z.string().default('http://192.168.0.51:5174'),
   COOKIE_DOMAIN: z.string().optional(),
+  DEV_AUTH_BYPASS: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -35,4 +36,5 @@ export const config = {
   appSlug: parsed.data.APP_SLUG,
   corsOrigin: parsed.data.CORS_ORIGIN,
   cookieDomain: parsed.data.COOKIE_DOMAIN,
+  devAuthBypass: parsed.data.DEV_AUTH_BYPASS === 'true' && parsed.data.NODE_ENV !== 'production',
 } as const;

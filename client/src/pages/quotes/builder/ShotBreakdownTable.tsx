@@ -1,13 +1,7 @@
 import { type ReactNode, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-} from '@/components/ui/table';
+import { Table, TableHeader, TableBody, TableRow, TableHead } from '@/components/ui/table';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { ShotRow } from './ShotRow';
 import type { BuilderShot } from './useBuilderState';
@@ -37,9 +31,7 @@ export function ShotBreakdownTable({
 }: ShotBreakdownTableProps) {
   const [batchEfficiency, setBatchEfficiency] = useState('1.0');
 
-  const selectedIndices = shots
-    .map((s, i) => (s.selected ? i : -1))
-    .filter((i) => i >= 0);
+  const selectedIndices = shots.map((s, i) => (s.selected ? i : -1)).filter((i) => i >= 0);
   const allSelected = shots.length > 0 && shots.every((s) => s.selected);
   const someSelected = selectedIndices.length > 0;
 

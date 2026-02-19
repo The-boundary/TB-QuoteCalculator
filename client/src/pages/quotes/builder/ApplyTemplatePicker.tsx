@@ -2,17 +2,9 @@ import { useMemo } from 'react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Film, Clock } from 'lucide-react';
+import { formatDuration } from '@/lib/utils';
 import { useTemplates } from '@/hooks/useTemplates';
 import type { FilmTemplateWithShots } from '../../../../../shared/types';
-
-function formatDuration(seconds: number): string {
-  if (seconds >= 60) {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-  }
-  return `${seconds}s`;
-}
 
 interface ApplyTemplatePickerProps {
   onApply: (template: FilmTemplateWithShots) => void;
@@ -44,15 +36,15 @@ export function ApplyTemplatePicker({ onApply, open, onOpenChange }: ApplyTempla
       <PopoverContent className="w-72 p-0" align="start">
         <div className="p-3 border-b border-border">
           <h4 className="text-sm font-medium">Apply Film Template</h4>
-          <p className="text-xs text-muted-foreground mt-1">
-            Replaces current duration and shots
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">Replaces current duration and shots</p>
         </div>
         <div className="max-h-64 overflow-y-auto p-2 space-y-0.5">
           {isLoading ? (
             <div className="px-3 py-4 text-center text-xs text-muted-foreground">Loading...</div>
           ) : sorted.length === 0 ? (
-            <div className="px-3 py-4 text-center text-xs text-muted-foreground">No templates available</div>
+            <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+              No templates available
+            </div>
           ) : (
             sorted.map((t) => {
               const totalShots = t.shots.reduce((sum, s) => sum + s.quantity, 0);

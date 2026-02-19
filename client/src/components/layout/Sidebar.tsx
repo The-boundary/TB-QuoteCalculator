@@ -15,8 +15,18 @@ const sections: SidebarSection[] = [
     key: 'main',
     items: [
       { key: 'quotes', label: 'Quotes', href: '/', icon: <FileText className="h-4 w-4" /> },
-      { key: 'rate-cards', label: 'Rate Cards', href: '/rate-cards', icon: <Calculator className="h-4 w-4" /> },
-      { key: 'templates', label: 'Templates', href: '/templates', icon: <Film className="h-4 w-4" /> },
+      {
+        key: 'rate-cards',
+        label: 'Rate Cards',
+        href: '/rate-cards',
+        icon: <Calculator className="h-4 w-4" />,
+      },
+      {
+        key: 'templates',
+        label: 'Templates',
+        href: '/templates',
+        icon: <Film className="h-4 w-4" />,
+      },
     ],
   },
 ];
@@ -25,7 +35,12 @@ const bottomSections: SidebarSection[] = [
   {
     key: 'bottom',
     items: [
-      { key: 'settings', label: 'Settings', href: '/settings', icon: <Settings className="h-4 w-4" /> },
+      {
+        key: 'settings',
+        label: 'Settings',
+        href: '/settings',
+        icon: <Settings className="h-4 w-4" />,
+      },
     ],
   },
 ];
@@ -38,7 +53,9 @@ const SHORT_COMMIT_HASH =
 function getDisplayName(user: { email?: string | null; user_metadata?: unknown } | null): string {
   const meta = user?.user_metadata;
   const fullName =
-    typeof meta === 'object' && meta !== null && typeof (meta as Record<string, unknown>).full_name === 'string'
+    typeof meta === 'object' &&
+    meta !== null &&
+    typeof (meta as Record<string, unknown>).full_name === 'string'
       ? ((meta as Record<string, unknown>).full_name as string)
       : null;
   return fullName?.trim() || user?.email?.split('@')[0] || 'User';
@@ -59,17 +76,30 @@ export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const handleSignOut = useCallback(async () => { await signOut(); navigate('/auth/login'); }, [signOut, navigate]);
-  const handleNavigateItem = useCallback((item: { href: string | null }) => { if (item.href) navigate(item.href); }, [navigate]);
+  const handleSignOut = useCallback(async () => {
+    await signOut();
+    navigate('/auth/login');
+  }, [signOut, navigate]);
+  const handleNavigateItem = useCallback(
+    (item: { href: string | null }) => {
+      if (item.href) navigate(item.href);
+    },
+    [navigate],
+  );
   const displayName = useMemo(() => getDisplayName(user), [user]);
   const email = user?.email ?? '';
   const userInfo = useMemo(() => ({ name: displayName, email }), [displayName, email]);
-  const handleNavigateSettings = useCallback(() => { navigate('/settings'); }, [navigate]);
+  const handleNavigateSettings = useCallback(() => {
+    navigate('/settings');
+  }, [navigate]);
 
-  const userActions: SidebarUserAction[] = useMemo(() => [
-    { key: 'settings', label: 'Settings', icon: Settings, onSelect: handleNavigateSettings },
-    { key: 'logout', label: 'Log out', icon: LogOut, onSelect: handleSignOut },
-  ], [handleNavigateSettings, handleSignOut]);
+  const userActions: SidebarUserAction[] = useMemo(
+    () => [
+      { key: 'settings', label: 'Settings', icon: Settings, onSelect: handleNavigateSettings },
+      { key: 'logout', label: 'Log out', icon: LogOut, onSelect: handleSignOut },
+    ],
+    [handleNavigateSettings, handleSignOut],
+  );
 
   return (
     <MissionControlSidebar

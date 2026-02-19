@@ -4,7 +4,9 @@ import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/uiStore';
 import { Sidebar } from './Sidebar';
 
-interface AppShellProps { children: ReactNode; }
+interface AppShellProps {
+  children: ReactNode;
+}
 
 export function AppShell({ children }: AppShellProps) {
   const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed);
@@ -14,7 +16,11 @@ export function AppShell({ children }: AppShellProps) {
     [wideMode],
   );
   return (
-    <MissionControlAppShell sidebar={<Sidebar />} collapsed={sidebarCollapsed} contentClassName={contentClassName}>
+    <MissionControlAppShell
+      sidebar={<Sidebar />}
+      collapsed={sidebarCollapsed}
+      contentClassName={contentClassName}
+    >
       {children}
     </MissionControlAppShell>
   );

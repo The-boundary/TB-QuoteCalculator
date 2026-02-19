@@ -36,11 +36,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const acc = data?.access;
       if (acc && typeof acc === 'object') {
         const a = acc as Record<string, unknown>;
-        setAccess({ role_slug: String(a.role_slug ?? ''), role_name: String(a.role_name ?? ''), is_admin: Boolean(a.is_admin) });
+        setAccess({
+          role_slug: String(a.role_slug ?? ''),
+          role_name: String(a.role_name ?? ''),
+          is_admin: Boolean(a.is_admin),
+        });
       } else {
         setAccess(null);
       }
-    } catch { setAccess(null); }
+    } catch {
+      setAccess(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -50,21 +56,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const res = await fetch('/api/auth/session', { credentials: 'include' });
         const payload: Record<string, unknown> | null = res.ok ? await res.json() : null;
         if (!mounted) return;
-        if (!payload) { setSession(null); setUser(null); setAccess(null); setLoading(false); return; }
+        if (!payload) {
+          setSession(null);
+          setUser(null);
+          setAccess(null);
+          setLoading(false);
+          return;
+        }
 
         const sess = payload.session as Record<string, unknown> | undefined;
         const sessUser = sess?.user as Record<string, unknown> | undefined;
         if (sessUser?.id) {
-          const userObj: User = { id: String(sessUser.id), email: (sessUser.email as string) ?? null, user_metadata: sessUser.user_metadata ?? null };
+          const userObj: User = {
+            id: String(sessUser.id),
+            email: (sessUser.email as string) ?? null,
+            user_metadata: sessUser.user_metadata ?? null,
+          };
           setUser(userObj);
           setSession({ user: userObj });
-        } else { setUser(null); setSession(null); }
+        } else {
+          setUser(null);
+          setSession(null);
+        }
 
         const acc = payload.access;
         if (acc && typeof acc === 'object') {
           const a = acc as Record<string, unknown>;
-          setAccess({ role_slug: String(a.role_slug ?? ''), role_name: String(a.role_name ?? ''), is_admin: Boolean(a.is_admin) });
-        } else { setAccess(null); }
+          setAccess({
+            role_slug: String(a.role_slug ?? ''),
+            role_name: String(a.role_name ?? ''),
+            is_admin: Boolean(a.is_admin),
+          });
+        } else {
+          setAccess(null);
+        }
         setLoading(false);
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
@@ -73,7 +98,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
     initAuth();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
@@ -84,7 +111,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = useCallback(async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-      setSession(null); setUser(null); setAccess(null);
+      setSession(null);
+      setUser(null);
+      setAccess(null);
       return { error: null };
     } catch (err) {
       return { error: { message: err instanceof Error ? err.message : 'Sign out failed' } };
@@ -92,7 +121,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, access, signInWithGoogle, signOut, refreshAccess }}>
+    <AuthContext.Provider
+      value={{ user, session, loading, access, signInWithGoogle, signOut, refreshAccess }}
+    >
       {children}
     </AuthContext.Provider>
   );

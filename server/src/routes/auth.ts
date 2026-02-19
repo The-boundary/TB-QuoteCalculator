@@ -14,18 +14,11 @@ function requireEnv(name: string): string {
 }
 
 function getGotrueUrl(): string {
-  return (process.env.GOTRUE_URL || requireEnv('SUPABASE_URL')).replace(
-    /\/+$/,
-    '',
-  );
+  return (process.env.GOTRUE_URL || requireEnv('SUPABASE_URL')).replace(/\/+$/, '');
 }
 
 function base64Url(buf: Buffer): string {
-  return buf
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 function sha256Base64Url(input: string): string {
@@ -65,8 +58,7 @@ function getBaseUrl(req: Request): string {
   const explicit = process.env.PUBLIC_BASE_URL;
   if (explicit && explicit.trim()) return explicit.trim().replace(/\/+$/, '');
   const proto =
-    (req.headers['x-forwarded-proto'] as string | undefined) ??
-    (req.secure ? 'https' : 'http');
+    (req.headers['x-forwarded-proto'] as string | undefined) ?? (req.secure ? 'https' : 'http');
   return `${proto}://${req.get('host')}`;
 }
 
@@ -76,24 +68,20 @@ async function exchangeAuthCodeForSession(params: {
   authCode: string;
   codeVerifier: string;
 }) {
-  const res = await fetch(
-    `${params.supabaseUrl}/auth/v1/token?grant_type=pkce`,
-    {
-      method: 'POST',
-      headers: {
-        apikey: params.supabaseAnonKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        auth_code: params.authCode,
-        code_verifier: params.codeVerifier,
-      }),
+  const res = await fetch(`${params.supabaseUrl}/auth/v1/token?grant_type=pkce`, {
+    method: 'POST',
+    headers: {
+      apikey: params.supabaseAnonKey,
+      'Content-Type': 'application/json',
     },
-  );
+    body: JSON.stringify({
+      auth_code: params.authCode,
+      code_verifier: params.codeVerifier,
+    }),
+  });
   const data: any = await res.json();
   if (!res.ok) throw new Error(data?.msg || 'Auth exchange failed');
-  if (!data?.access_token || !data?.refresh_token)
-    throw new Error('Auth response missing tokens');
+  if (!data?.access_token || !data?.refresh_token) throw new Error('Auth response missing tokens');
   return {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
@@ -119,8 +107,7 @@ async function fetchSupabaseUser(params: {
 function verifySupabaseToken(token: string): jwt.JwtPayload {
   const jwtSecret = requireEnv('SUPABASE_JWT_SECRET');
   const decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] });
-  if (typeof decoded !== 'object' || decoded === null)
-    throw new Error('Invalid token');
+  if (typeof decoded !== 'object' || decoded === null) throw new Error('Invalid token');
   return decoded as jwt.JwtPayload;
 }
 
@@ -153,10 +140,8 @@ router.get('/callback', async (req: Request, res: Response) => {
   const code = req.query.code;
   const state = req.query.state;
 
-  if (typeof code !== 'string' || !code)
-    return res.status(400).send('Missing code');
-  if (typeof state !== 'string' || !state)
-    return res.status(400).send('Missing state');
+  if (typeof code !== 'string' || !code) return res.status(400).send('Missing code');
+  if (typeof state !== 'string' || !state) return res.status(400).send('Missing state');
 
   const codeVerifier = req.cookies.pkce_v;
   const expectedState = req.cookies.app_state;
@@ -191,9 +176,7 @@ router.get('/callback', async (req: Request, res: Response) => {
 
     res.redirect(302, '/');
   } catch (err) {
-    res
-      .status(400)
-      .send(err instanceof Error ? err.message : 'Auth callback failed');
+    res.status(400).send(err instanceof Error ? err.message : 'Auth callback failed');
   }
 });
 
@@ -207,9 +190,7 @@ router.post('/logout', (req, res) => {
 // ── GET /session ──────────────────────────────────────────────
 router.get('/session', async (req: Request, res: Response) => {
   const token =
-    typeof req.cookies.tb_access_token === 'string'
-      ? req.cookies.tb_access_token
-      : null;
+    typeof req.cookies.tb_access_token === 'string' ? req.cookies.tb_access_token : null;
 
   if (!token) return res.json({ session: null, access: null });
 
@@ -227,10 +208,7 @@ router.get('/session', async (req: Request, res: Response) => {
     });
 
     const supabase = getAuthSupabaseClient();
-    if (!supabase)
-      return res
-        .status(503)
-        .json({ error: { message: 'DB not configured' } });
+    if (!supabase) return res.status(503).json({ error: { message: 'DB not configured' } });
 
     const { data: access, error: accessError } = await supabase
       .from('effective_user_app_access_view')
@@ -241,8 +219,7 @@ router.get('/session', async (req: Request, res: Response) => {
       .eq('app_is_active', true)
       .maybeSingle();
 
-    if (accessError)
-      logger.warn(`Failed to load app access: ${accessError.message}`);
+    if (accessError) logger.warn(`Failed to load app access: ${accessError.message}`);
 
     res.json({
       session: user

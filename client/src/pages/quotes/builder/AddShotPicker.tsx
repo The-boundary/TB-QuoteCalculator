@@ -59,9 +59,7 @@ export function AddShotPicker({
       <PopoverContent className="w-80 p-0" align="start">
         <div className="p-3 border-b border-border">
           <h4 className="text-sm font-medium">Add Shot Type</h4>
-          <p className="text-xs text-muted-foreground mt-1">
-            Select from rate card items
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">Select from rate card items</p>
         </div>
         <div className="max-h-64 overflow-y-auto p-2 space-y-3">
           {Object.entries(grouped).map(([category, items]) => (

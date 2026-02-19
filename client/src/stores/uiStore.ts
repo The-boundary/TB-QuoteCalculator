@@ -30,6 +30,6 @@ export const useUIStore = create<UIState>()(
         sidebarCollapsed: state.sidebarCollapsed,
         wideMode: state.wideMode,
       }),
-    }
-  )
+    },
+  ),
 );
