@@ -30,9 +30,11 @@ function AppShellLayout() {
   const location = useLocation();
   return (
     <AppShell>
-      <div key={location.pathname} className="animate-in fade-in duration-200">
-        <Outlet />
-      </div>
+      <Suspense fallback={<RouteFallback />}>
+        <div key={location.pathname} className="animate-in fade-in duration-200">
+          <Outlet />
+        </div>
+      </Suspense>
     </AppShell>
   );
 }
