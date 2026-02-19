@@ -1,6 +1,14 @@
 import { Router, type Request, type Response } from 'express';
 import { getSupabaseClient } from '../services/supabase.js';
 import { logger } from '../utils/logger.js';
+import {
+  validate,
+  createQuoteSchema,
+  updateQuoteSchema,
+  updateStatusSchema,
+  createVersionSchema,
+  updateVersionSchema,
+} from '../lib/validation.js';
 
 const router = Router();
 
@@ -17,33 +25,32 @@ router.get('/', async (_req: Request, res: Response) => {
       .order('updated_at', { ascending: false });
 
     if (error) throw error;
+    if (!quotes || quotes.length === 0) return res.json([]);
 
-    // For each quote, get the latest version summary
-    const enriched = await Promise.all(
-      (quotes || []).map(async (quote: any) => {
-        const { data: versions } = await supabase
-          .from('quote_versions')
-          .select('id, version_number, duration_seconds, pool_budget_hours, total_hours, created_at')
-          .eq('quote_id', quote.id)
-          .order('version_number', { ascending: false })
-          .limit(1);
+    // Batch fetch all versions for these quotes (single query instead of N+1)
+    const quoteIds = quotes.map((q: any) => q.id);
+    const { data: allVersions } = await supabase
+      .from('quote_versions')
+      .select('id, quote_id, version_number, duration_seconds, pool_budget_hours, total_hours, created_at')
+      .in('quote_id', quoteIds)
+      .order('version_number', { ascending: false });
 
-        return {
-          ...quote,
-          latest_version: versions?.[0] || null,
-          version_count: 0, // Will be set below
-        };
-      })
-    );
-
-    // Get version counts
-    for (const q of enriched) {
-      const { count } = await supabase
-        .from('quote_versions')
-        .select('*', { count: 'exact', head: true })
-        .eq('quote_id', q.id);
-      q.version_count = count || 0;
+    // Group versions by quote_id
+    const versionsByQuote = new Map<string, any[]>();
+    for (const v of allVersions || []) {
+      const existing = versionsByQuote.get(v.quote_id);
+      if (existing) existing.push(v);
+      else versionsByQuote.set(v.quote_id, [v]);
     }
+
+    const enriched = quotes.map((quote: any) => {
+      const versions = versionsByQuote.get(quote.id) || [];
+      return {
+        ...quote,
+        latest_version: versions[0] || null, // Already sorted desc by version_number
+        version_count: versions.length,
+      };
+    });
 
     res.json(enriched);
   } catch (err) {
@@ -109,10 +116,9 @@ router.post('/', async (req: Request, res: Response) => {
     const supabase = getSupabaseClient();
     if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
 
-    const { client_name, project_name, rate_card_id } = req.body;
-    if (!client_name || !project_name || !rate_card_id) {
-      return res.status(400).json({ error: { message: 'client_name, project_name, and rate_card_id are required' } });
-    }
+    const parsed = validate(createQuoteSchema, req.body);
+    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
+    const { client_name, project_name, rate_card_id } = parsed.data;
 
     // Get rate card for pool calculation
     const { data: rateCard, error: rcError } = await supabase
@@ -173,7 +179,9 @@ router.put('/:id', async (req: Request, res: Response) => {
     const supabase = getSupabaseClient();
     if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
 
-    const { client_name, project_name } = req.body;
+    const parsed = validate(updateQuoteSchema, req.body);
+    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
+    const { client_name, project_name } = parsed.data;
 
     const { data, error } = await supabase
       .from('quotes')
@@ -196,11 +204,9 @@ router.put('/:id/status', async (req: Request, res: Response) => {
     const supabase = getSupabaseClient();
     if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
 
-    const { status } = req.body;
-    const validStatuses = ['draft', 'pending_approval', 'approved', 'sent', 'archived'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ error: { message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` } });
-    }
+    const parsed = validate(updateStatusSchema, req.body);
+    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
+    const { status } = parsed.data;
 
     // Approval requires Approver or Admin role
     if (status === 'approved' && !req.user?.appAccess?.is_admin) {
@@ -252,10 +258,9 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
     const supabase = getSupabaseClient();
     if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
 
-    const { duration_seconds, notes, shots } = req.body;
-    if (!duration_seconds) {
-      return res.status(400).json({ error: { message: 'duration_seconds is required' } });
-    }
+    const parsed = validate(createVersionSchema, req.body);
+    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
+    const { duration_seconds, notes, shots } = parsed.data;
 
     // Get quote and rate card
     const { data: quote, error: qError } = await supabase
@@ -350,7 +355,9 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
     const supabase = getSupabaseClient();
     if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
 
-    const { duration_seconds, shots, notes } = req.body;
+    const parsed = validate(updateVersionSchema, req.body);
+    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
+    const { duration_seconds, shots, notes } = parsed.data;
 
     // Get rate card for calculations
     const { data: quote } = await supabase

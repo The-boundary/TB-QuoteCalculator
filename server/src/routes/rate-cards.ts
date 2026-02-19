@@ -1,6 +1,12 @@
 import { Router, type Request, type Response } from 'express';
 import { getSupabaseClient } from '../services/supabase.js';
 import { logger } from '../utils/logger.js';
+import {
+  validate,
+  createRateCardSchema,
+  updateRateCardSchema,
+  rateCardItemSchema,
+} from '../lib/validation.js';
 
 const router = Router();
 
@@ -63,10 +69,9 @@ router.post('/', async (req: Request, res: Response) => {
     const supabase = getSupabaseClient();
     if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
 
-    const { name, hours_per_second, editing_hours_per_30s, is_default } = req.body;
-    if (!name || !hours_per_second) {
-      return res.status(400).json({ error: { message: 'name and hours_per_second are required' } });
-    }
+    const parsed = validate(createRateCardSchema, req.body);
+    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
+    const { name, hours_per_second, editing_hours_per_30s, is_default } = parsed.data;
 
     // If setting as default, unset other defaults
     if (is_default) {
@@ -103,7 +108,9 @@ router.put('/:id', async (req: Request, res: Response) => {
     const supabase = getSupabaseClient();
     if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
 
-    const { name, hours_per_second, editing_hours_per_30s, is_default } = req.body;
+    const parsed = validate(updateRateCardSchema, req.body);
+    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
+    const { name, hours_per_second, editing_hours_per_30s, is_default } = parsed.data;
 
     if (is_default) {
       await supabase.from('rate_cards').update({ is_default: false }).eq('is_default', true);
@@ -140,10 +147,9 @@ router.post('/:id/items', async (req: Request, res: Response) => {
     const supabase = getSupabaseClient();
     if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
 
-    const { shot_type, category, hours, sort_order } = req.body;
-    if (!shot_type || !category || hours === undefined) {
-      return res.status(400).json({ error: { message: 'shot_type, category, and hours are required' } });
-    }
+    const parsed = validate(rateCardItemSchema, req.body);
+    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
+    const { shot_type, category, hours, sort_order } = parsed.data;
 
     const { data, error } = await supabase
       .from('rate_card_items')
@@ -175,7 +181,9 @@ router.put('/:id/items/:itemId', async (req: Request, res: Response) => {
     const supabase = getSupabaseClient();
     if (!supabase) return res.status(503).json({ error: { message: 'Database not configured' } });
 
-    const { shot_type, category, hours, sort_order } = req.body;
+    const parsed = validate(rateCardItemSchema, req.body);
+    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
+    const { shot_type, category, hours, sort_order } = parsed.data;
 
     const { data, error } = await supabase
       .from('rate_card_items')
