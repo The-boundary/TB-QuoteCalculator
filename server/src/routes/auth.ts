@@ -233,11 +233,12 @@ router.get('/session', async (req: Request, res: Response) => {
         .json({ error: { message: 'DB not configured' } });
 
     const { data: access, error: accessError } = await supabase
-      .from('user_app_access_view')
+      .from('effective_user_app_access_view')
       .select('role_slug,role_name,is_admin')
       .eq('user_id', userId)
       .eq('app_slug', APP_SLUG)
       .eq('is_active', true)
+      .eq('app_is_active', true)
       .maybeSingle();
 
     if (accessError)

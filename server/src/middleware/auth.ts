@@ -68,11 +68,12 @@ const ensureAppAccess = async (userId: string): Promise<AppAccess> => {
   if (!accessSupabase) throw new Error('Supabase not configured');
 
   const { data, error } = await accessSupabase
-    .from('user_app_access_view')
+    .from('effective_user_app_access_view')
     .select('role_slug,is_admin')
     .eq('user_id', userId)
     .eq('app_slug', APP_SLUG)
     .eq('is_active', true)
+    .eq('app_is_active', true)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
