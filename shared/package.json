@@ -1,0 +1,8 @@
+{
+  "name": "shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "types/index.ts",
+  "scripts": { "build": "echo 'shared: nothing to build'", "typecheck": "tsc --noEmit" }
+}
