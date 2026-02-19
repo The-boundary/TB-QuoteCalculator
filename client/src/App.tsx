@@ -24,6 +24,9 @@ const RateCardsPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage }))
 );
+const TemplatesPage = lazy(() =>
+  import('./pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage }))
+);
 
 function RouteFallback() {
   return <div className="h-24 animate-pulse rounded-lg border border-border/50 bg-card/40" />;
@@ -54,6 +57,7 @@ export function App() {
             <Route path="/quotes/:id" element={<QuoteDetailPage />} />
             <Route path="/quotes/:id/versions/:versionId/build" element={<QuoteBuilderPage />} />
             <Route path="/rate-cards" element={<RateCardsPage />} />
+            <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>

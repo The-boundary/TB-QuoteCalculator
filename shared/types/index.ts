@@ -71,6 +71,32 @@ export interface QuoteWithVersions extends Quote {
   rate_card?: RateCard;
 }
 
+// ── Film Templates ─────────────────────────────────────────
+
+export interface FilmTemplate {
+  id: string;
+  name: string;
+  duration_seconds: number;
+  description: string | null;
+  rate_card_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FilmTemplateShot {
+  id: string;
+  template_id: string;
+  shot_type: string;
+  quantity: number;
+  efficiency_multiplier: number;
+  sort_order: number;
+}
+
+export interface FilmTemplateWithShots extends FilmTemplate {
+  shots: FilmTemplateShot[];
+}
+
 // ── API Payloads ────────────────────────────────────────────
 
 export interface CreateQuotePayload {

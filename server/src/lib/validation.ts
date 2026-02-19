@@ -56,6 +56,31 @@ export const rateCardItemSchema = z.object({
   sort_order: z.number().int().min(0).optional(),
 });
 
+// ── Film Templates ─────────────────────────────────────────
+
+const templateShotSchema = z.object({
+  shot_type: z.string().min(1).max(200),
+  quantity: z.number().int().min(1).max(9999),
+  efficiency_multiplier: z.number().min(0.1).max(5.0),
+  sort_order: z.number().int().min(0).optional(),
+});
+
+export const createTemplateSchema = z.object({
+  name: z.string().min(1).max(200),
+  duration_seconds: z.number().int().min(1).max(600),
+  description: z.string().max(2000).nullable().optional(),
+  rate_card_id: z.string().uuid().nullable().optional(),
+  shots: z.array(templateShotSchema).max(100).optional(),
+});
+
+export const updateTemplateSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  duration_seconds: z.number().int().min(1).max(600).optional(),
+  description: z.string().max(2000).nullable().optional(),
+  rate_card_id: z.string().uuid().nullable().optional(),
+  shots: z.array(templateShotSchema).max(100).optional(),
+});
+
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; error: string } {
   const result = schema.safeParse(data);
   if (!result.success) {
