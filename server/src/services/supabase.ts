@@ -4,7 +4,7 @@ import pg from 'pg';
 import { logger } from '../utils/logger.js';
 
 // ============================================================
-// Supabase REST client (public schema only — for TowerWatch auth)
+// Supabase REST client (tower_watch schema — for TowerWatch auth)
 // ============================================================
 
 type AnySupabaseClient = SupabaseClient<any, any, any>;
@@ -14,7 +14,7 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const authSupabase: AnySupabaseClient | null =
   supabaseUrl && supabaseKey
-    ? createClient(supabaseUrl, supabaseKey, { db: { schema: 'public' } })
+    ? createClient(supabaseUrl, supabaseKey, { db: { schema: 'tower_watch' } })
     : null;
 
 if (!supabaseUrl || !supabaseKey) {
@@ -47,7 +47,7 @@ export async function dbQuery<T extends pg.QueryResultRow = any>(
   if (!pool) throw new Error('Database not configured (SUPABASE_DATABASE_URL missing)');
   const client = await pool.connect();
   try {
-    await client.query(`SET search_path TO ${SCHEMA}, public`);
+    await client.query(`SET search_path TO ${SCHEMA}`);
     return await client.query<T>(text, params);
   } finally {
     client.release();
@@ -61,7 +61,7 @@ export async function dbTransaction<T>(
   if (!pool) throw new Error('Database not configured (SUPABASE_DATABASE_URL missing)');
   const client = await pool.connect();
   try {
-    await client.query(`SET search_path TO ${SCHEMA}, public`);
+    await client.query(`SET search_path TO ${SCHEMA}`);
     await client.query('BEGIN');
     const result = await fn(client);
     await client.query('COMMIT');
