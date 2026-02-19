@@ -12,7 +12,7 @@ function createSchemaClient(schema: string): AnySupabaseClient | null {
   return createClient(supabaseUrl, supabaseKey, { db: { schema } });
 }
 
-const supabase = createSchemaClient('public');
+const supabase = createSchemaClient('quote_calculator');
 const authSupabase = createSchemaClient('public');
 
 if (!supabaseUrl || !supabaseKey) {
