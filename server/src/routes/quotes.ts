@@ -1,95 +1,151 @@
 import { Router, type Request, type Response } from 'express';
 import { dbQuery, dbTransaction } from '../services/supabase.js';
-import { sendServerError, sendNotFound, httpError, type HttpError } from '../utils/route-helpers.js';
 import {
-  validate,
+  budgetToPoolHours,
+  editingHours,
+  poolBudgetHours,
+  shotCount,
+  totalShotHours,
+} from '../lib/quoteCalc.js';
+import {
   createQuoteSchema,
-  updateQuoteSchema,
-  updateStatusSchema,
   createVersionSchema,
+  updateStatusSchema,
   updateVersionSchema,
+  validate,
 } from '../lib/validation.js';
+import {
+  httpError,
+  sendNotFound,
+  sendServerError,
+  type HttpError,
+} from '../utils/route-helpers.js';
 
 const router = Router();
 
-// ---------------------------------------------------------------------------
-// GET /api/quotes -- list all quotes with latest version summary
-// ---------------------------------------------------------------------------
+function canTransitionStatus(current: string, next: string): boolean {
+  if (current === next) return true;
+  if (current === 'archived') return false;
+  if (next === 'archived') return true;
+  if (next === 'draft') return true;
+
+  if (current === 'draft') return next === 'negotiating';
+  if (current === 'negotiating') return next === 'awaiting_approval';
+  if (current === 'awaiting_approval') return next === 'confirmed';
+  return false;
+}
+
+function mapShots(
+  shots: Array<{
+    shot_type: string;
+    percentage: number;
+    quantity: number;
+    base_hours_each: number;
+    efficiency_multiplier: number;
+    sort_order?: number;
+  }>,
+) {
+  return shots.map((shot, idx) => {
+    const efficiency = shot.efficiency_multiplier || 1;
+    const quantity = shot.quantity || 1;
+    const baseHours = shot.base_hours_each || 0;
+    return {
+      shot_type: shot.shot_type,
+      percentage: shot.percentage ?? 0,
+      quantity,
+      base_hours_each: baseHours,
+      efficiency_multiplier: efficiency,
+      adjusted_hours: baseHours * quantity * efficiency,
+      sort_order: shot.sort_order ?? idx,
+    };
+  });
+}
+
+// GET /api/quotes
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const { rows: quotes } = await dbQuery(
-      `SELECT * FROM quotes WHERE status != 'archived' ORDER BY updated_at DESC`,
+    const { rows } = await dbQuery(
+      `SELECT q.*,
+              p.name AS project_name,
+              p.kantata_id,
+              p.is_forecasted,
+              d.id AS development_id,
+              d.name AS development_name,
+              d.client_name AS development_client_name,
+              (
+                SELECT json_build_object(
+                  'id', v.id,
+                  'version_number', v.version_number,
+                  'duration_seconds', v.duration_seconds,
+                  'shot_count', v.shot_count,
+                  'pool_budget_hours', v.pool_budget_hours,
+                  'pool_budget_amount', v.pool_budget_amount,
+                  'total_hours', v.total_hours,
+                  'hourly_rate', v.hourly_rate
+                )
+                FROM quote_versions v
+                WHERE v.quote_id = q.id
+                ORDER BY v.version_number DESC
+                LIMIT 1
+              ) AS latest_version,
+              (
+                SELECT COUNT(*)::int
+                FROM quote_versions v
+                WHERE v.quote_id = q.id
+              ) AS version_count
+       FROM quotes q
+       JOIN projects p ON p.id = q.project_id
+       JOIN developments d ON d.id = p.development_id
+       WHERE q.status != 'archived'
+       ORDER BY q.updated_at DESC`,
     );
 
-    if (quotes.length === 0) return res.json([]);
-
-    // Batch fetch all versions for these quotes (single query instead of N+1)
-    const quoteIds = quotes.map((q: { id: string }) => q.id);
-    const { rows: allVersions } = await dbQuery(
-      `SELECT id, quote_id, version_number, duration_seconds, pool_budget_hours, total_hours, created_at
-       FROM quote_versions
-       WHERE quote_id = ANY($1)
-       ORDER BY version_number DESC`,
-      [quoteIds],
-    );
-
-    // Group versions by quote_id
-    const versionsByQuote = new Map<string, typeof allVersions>();
-    for (const v of allVersions) {
-      const existing = versionsByQuote.get(v.quote_id);
-      if (existing) existing.push(v);
-      else versionsByQuote.set(v.quote_id, [v]);
-    }
-
-    const enriched = quotes.map((quote: { id: string }) => {
-      const versions = versionsByQuote.get(quote.id) || [];
-      return {
-        ...quote,
-        latest_version: versions[0] || null,
-        version_count: versions.length,
-      };
-    });
-
-    res.json(enriched);
+    res.json(rows);
   } catch (err) {
     return sendServerError(res, err, 'Failed to list quotes');
   }
 });
 
-// ---------------------------------------------------------------------------
-// GET /api/quotes/:id -- get quote with all versions and shots
-// ---------------------------------------------------------------------------
+// GET /api/quotes/:id
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { rows: quoteRows } = await dbQuery(
-      `SELECT * FROM quotes WHERE id = $1`,
+      `SELECT q.*,
+              p.name AS project_name,
+              p.kantata_id,
+              p.is_forecasted,
+              p.development_id,
+              d.name AS development_name,
+              d.client_name AS development_client_name
+       FROM quotes q
+       JOIN projects p ON p.id = q.project_id
+       JOIN developments d ON d.id = p.development_id
+       WHERE q.id = $1`,
       [req.params.id],
     );
 
     const quote = quoteRows[0];
     if (!quote) return sendNotFound(res, 'Quote');
 
-    // Get rate card
-    const { rows: rcRows } = await dbQuery(
-      `SELECT * FROM rate_cards WHERE id = $1`,
-      [quote.rate_card_id],
-    );
-    const rateCard = rcRows[0] || null;
+    const { rows: rateCardRows } = await dbQuery('SELECT * FROM rate_cards WHERE id = $1', [
+      quote.rate_card_id,
+    ]);
 
-    // Get all versions
     const { rows: versions } = await dbQuery(
-      `SELECT * FROM quote_versions WHERE quote_id = $1 ORDER BY version_number ASC`,
+      'SELECT * FROM quote_versions WHERE quote_id = $1 ORDER BY version_number ASC',
       [req.params.id],
     );
 
-    // Batch fetch all shots for all versions (single query instead of N+1)
-    const versionIds = versions.map((v: { id: string }) => v.id);
-    const allShots = versionIds.length > 0
-      ? (await dbQuery(
-          `SELECT * FROM version_shots WHERE version_id = ANY($1) ORDER BY sort_order`,
-          [versionIds],
-        )).rows
-      : [];
+    const versionIds = versions.map((version: { id: string }) => version.id);
+    const allShots =
+      versionIds.length > 0
+        ? (
+            await dbQuery(
+              'SELECT * FROM version_shots WHERE version_id = ANY($1) ORDER BY sort_order ASC',
+              [versionIds],
+            )
+          ).rows
+        : [];
 
     const shotsByVersion = new Map<string, typeof allShots>();
     for (const shot of allShots) {
@@ -100,61 +156,126 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     const versionsWithShots = versions.map((version: { id: string }) => ({
       ...version,
-      shots: shotsByVersion.get(version.id) || [],
+      shots: shotsByVersion.get(version.id) ?? [],
     }));
 
-    res.json({ ...quote, rate_card: rateCard, versions: versionsWithShots });
+    const { rows: statusLog } = await dbQuery(
+      'SELECT * FROM quote_status_log WHERE quote_id = $1 ORDER BY changed_at ASC',
+      [req.params.id],
+    );
+
+    res.json({
+      ...quote,
+      rate_card: rateCardRows[0] ?? null,
+      project: {
+        id: quote.project_id,
+        development_id: quote.development_id,
+        name: quote.project_name,
+        kantata_id: quote.kantata_id,
+        is_forecasted: quote.is_forecasted,
+        development_name: quote.development_name,
+        development_client_name: quote.development_client_name,
+      },
+      versions: versionsWithShots,
+      status_log: statusLog,
+    });
   } catch (err) {
     return sendServerError(res, err, 'Failed to get quote');
   }
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/quotes -- create quote with empty v1
-// ---------------------------------------------------------------------------
+// POST /api/quotes
 router.post('/', async (req: Request, res: Response) => {
   try {
     const parsed = validate(createQuoteSchema, req.body);
-    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
-    const { client_name, project_name, rate_card_id } = parsed.data;
+    if (!parsed.success) {
+      return res.status(400).json({ error: { message: parsed.error } });
+    }
 
     const result = await dbTransaction(async (client) => {
-      // Get rate card for pool calculation
-      const { rows: rcRows } = await client.query(
-        `SELECT hours_per_second, editing_hours_per_30s FROM rate_cards WHERE id = $1`,
+      const { project_id, mode, rate_card_id } = parsed.data;
+
+      const { rows: projectRows } = await client.query('SELECT id FROM projects WHERE id = $1', [
+        project_id,
+      ]);
+      if (!projectRows[0]) throw httpError('Project not found', 404);
+
+      const { rows: rateCardRows } = await client.query(
+        `SELECT hours_per_second, editing_hours_per_30s, hourly_rate
+         FROM rate_cards WHERE id = $1`,
         [rate_card_id],
       );
-      const rateCard = rcRows[0];
+
+      const rateCard = rateCardRows[0];
       if (!rateCard) throw httpError('Invalid rate card', 400);
 
-      // Create quote
       const { rows: quoteRows } = await client.query(
-        `INSERT INTO quotes (client_name, project_name, rate_card_id, status, created_by)
+        `INSERT INTO quotes (project_id, mode, rate_card_id, status, created_by)
          VALUES ($1, $2, $3, 'draft', $4)
          RETURNING *`,
-        [client_name, project_name, rate_card_id, req.user!.id],
+        [project_id, mode, rate_card_id, req.user!.id],
       );
+
       const quote = quoteRows[0];
 
-      // Create empty version 1 with default 60s duration
-      const defaultDuration = 60;
-      const poolBudget = defaultDuration * rateCard.hours_per_second;
-      const editingHours = Math.ceil(defaultDuration / 30) * rateCard.editing_hours_per_30s;
+      const { rows: statusRows } = await client.query(
+        `INSERT INTO quote_status_log (quote_id, old_status, new_status, changed_by, changed_by_email)
+         VALUES ($1, NULL, 'draft', $2, $3)
+         RETURNING *`,
+        [quote.id, req.user!.id, req.user?.email ?? null],
+      );
+
+      const durationSeconds = 60;
+      const versionShotCount = shotCount(durationSeconds);
+      const hourlyRate = Number(rateCard.hourly_rate ?? 125);
+      const editHours = editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s));
+
+      const poolHours =
+        mode === 'budget'
+          ? poolBudgetHours(durationSeconds, Number(rateCard.hours_per_second))
+          : null;
+      const poolAmount = mode === 'budget' && poolHours !== null ? poolHours * hourlyRate : null;
 
       const { rows: versionRows } = await client.query(
-        `INSERT INTO quote_versions (quote_id, version_number, duration_seconds, pool_budget_hours, total_hours, created_by)
-         VALUES ($1, 1, $2, $3, $4, $5)
+        `INSERT INTO quote_versions (
+            quote_id,
+            version_number,
+            duration_seconds,
+            shot_count,
+            pool_budget_hours,
+            pool_budget_amount,
+            total_hours,
+            hourly_rate,
+            notes,
+            created_by
+          )
+         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, NULL, $8)
          RETURNING *`,
-        [quote.id, defaultDuration, poolBudget, editingHours, req.user!.id],
+        [
+          quote.id,
+          durationSeconds,
+          versionShotCount,
+          poolHours,
+          poolAmount,
+          editHours,
+          hourlyRate,
+          req.user!.id,
+        ],
       );
-      const version = versionRows[0];
 
-      return { ...quote, versions: [{ ...version, shots: [] }] };
+      return {
+        ...quote,
+        versions: [{ ...versionRows[0], shots: [] }],
+        status_log: statusRows,
+      };
     });
 
     res.status(201).json(result);
   } catch (err) {
     const httpErr = err as HttpError;
+    if (httpErr.statusCode === 404) {
+      return res.status(404).json({ error: { message: httpErr.message } });
+    }
     if (httpErr.statusCode === 400) {
       return res.status(400).json({ error: { message: httpErr.message } });
     }
@@ -162,147 +283,221 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// PUT /api/quotes/:id -- update quote metadata
-// ---------------------------------------------------------------------------
-router.put('/:id', async (req: Request, res: Response) => {
-  try {
-    const parsed = validate(updateQuoteSchema, req.body);
-    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
-    const { client_name, project_name } = parsed.data;
-
-    const { rows } = await dbQuery(
-      `UPDATE quotes SET client_name = $1, project_name = $2, updated_at = NOW()
-       WHERE id = $3 RETURNING *`,
-      [client_name, project_name, req.params.id],
-    );
-
-    if (rows.length === 0) return sendNotFound(res, 'Quote');
-    res.json(rows[0]);
-  } catch (err) {
-    return sendServerError(res, err, 'Failed to update quote');
-  }
-});
-
-// ---------------------------------------------------------------------------
-// PUT /api/quotes/:id/status -- update status
-// ---------------------------------------------------------------------------
+// PUT /api/quotes/:id/status
 router.put('/:id/status', async (req: Request, res: Response) => {
   try {
     const parsed = validate(updateStatusSchema, req.body);
-    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
-    const { status } = parsed.data;
-
-    // Approval requires Admin role
-    if (status === 'approved' && !req.user?.appAccess?.is_admin) {
-      return res.status(403).json({ error: { message: 'Only admins can approve quotes' } });
+    if (!parsed.success) {
+      return res.status(400).json({ error: { message: parsed.error } });
     }
 
-    const { rows } = await dbQuery(
-      `UPDATE quotes SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
-      [status, req.params.id],
-    );
+    const result = await dbTransaction(async (client) => {
+      const { rows: currentRows } = await client.query('SELECT * FROM quotes WHERE id = $1', [
+        req.params.id,
+      ]);
+      const current = currentRows[0];
+      if (!current) throw httpError('Quote not found', 404);
 
-    if (rows.length === 0) return sendNotFound(res, 'Quote');
-    res.json(rows[0]);
+      if (!canTransitionStatus(current.status, parsed.data.status)) {
+        throw httpError(
+          `Invalid status transition: ${current.status} -> ${parsed.data.status}`,
+          400,
+        );
+      }
+
+      const { rows: updatedRows } = await client.query(
+        'UPDATE quotes SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+        [parsed.data.status, req.params.id],
+      );
+
+      await client.query(
+        `INSERT INTO quote_status_log (quote_id, old_status, new_status, changed_by, changed_by_email)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          req.params.id,
+          current.status,
+          parsed.data.status,
+          req.user!.id,
+          req.user?.email ?? null,
+        ],
+      );
+
+      return updatedRows[0];
+    });
+
+    res.json(result);
   } catch (err) {
+    const httpErr = err as HttpError;
+    if (httpErr.statusCode === 404) {
+      return res.status(404).json({ error: { message: httpErr.message } });
+    }
+    if (httpErr.statusCode === 400) {
+      return res.status(400).json({ error: { message: httpErr.message } });
+    }
     return sendServerError(res, err, 'Failed to update quote status');
   }
 });
 
-// ---------------------------------------------------------------------------
-// DELETE /api/quotes/:id -- archive quote (soft delete)
-// ---------------------------------------------------------------------------
+// DELETE /api/quotes/:id (soft archive)
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const { rows } = await dbQuery(
-      `UPDATE quotes SET status = 'archived', updated_at = NOW() WHERE id = $1 RETURNING *`,
-      [req.params.id],
-    );
+    const result = await dbTransaction(async (client) => {
+      const { rows: currentRows } = await client.query('SELECT * FROM quotes WHERE id = $1', [
+        req.params.id,
+      ]);
+      const current = currentRows[0];
+      if (!current) throw httpError('Quote not found', 404);
 
-    if (rows.length === 0) return sendNotFound(res, 'Quote');
-    res.json(rows[0]);
+      const { rows: updatedRows } = await client.query(
+        `UPDATE quotes SET status = 'archived', updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [req.params.id],
+      );
+
+      await client.query(
+        `INSERT INTO quote_status_log (quote_id, old_status, new_status, changed_by, changed_by_email)
+         VALUES ($1, $2, 'archived', $3, $4)`,
+        [req.params.id, current.status, req.user!.id, req.user?.email ?? null],
+      );
+
+      return updatedRows[0];
+    });
+
+    res.json(result);
   } catch (err) {
+    const httpErr = err as HttpError;
+    if (httpErr.statusCode === 404) {
+      return res.status(404).json({ error: { message: httpErr.message } });
+    }
     return sendServerError(res, err, 'Failed to archive quote');
   }
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/quotes/:id/versions -- create new version
-// ---------------------------------------------------------------------------
+// POST /api/quotes/:id/versions
 router.post('/:id/versions', async (req: Request, res: Response) => {
   try {
     const parsed = validate(createVersionSchema, req.body);
-    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
-    const { duration_seconds, notes, shots } = parsed.data;
+    if (!parsed.success) {
+      return res.status(400).json({ error: { message: parsed.error } });
+    }
 
     const result = await dbTransaction(async (client) => {
-      // Get quote and rate card
       const { rows: quoteRows } = await client.query(
-        `SELECT rate_card_id FROM quotes WHERE id = $1`,
+        'SELECT id, mode, rate_card_id FROM quotes WHERE id = $1',
         [req.params.id],
       );
       const quote = quoteRows[0];
       if (!quote) throw httpError('Quote not found', 404);
 
       const { rows: rcRows } = await client.query(
-        `SELECT hours_per_second, editing_hours_per_30s FROM rate_cards WHERE id = $1`,
+        'SELECT hours_per_second, editing_hours_per_30s, hourly_rate FROM rate_cards WHERE id = $1',
         [quote.rate_card_id],
       );
       const rateCard = rcRows[0];
       if (!rateCard) throw httpError('Rate card not found', 400);
 
-      // Get next version number
-      const { rows: existingVersions } = await client.query(
-        `SELECT version_number FROM quote_versions WHERE quote_id = $1 ORDER BY version_number DESC LIMIT 1`,
+      const { rows: nextRows } = await client.query(
+        `SELECT COALESCE(MAX(version_number), 0) + 1 AS next_version
+         FROM quote_versions
+         WHERE quote_id = $1`,
         [req.params.id],
       );
-      const nextVersion = (existingVersions[0]?.version_number || 0) + 1;
 
-      // Calculate budget
-      const poolBudget = duration_seconds * rateCard.hours_per_second;
-      const editingHours = Math.ceil(duration_seconds / 30) * rateCard.editing_hours_per_30s;
+      const durationSeconds = parsed.data.duration_seconds;
+      const shot_count = shotCount(durationSeconds);
+      const hourlyRate = Number(parsed.data.hourly_rate ?? rateCard.hourly_rate ?? 125);
 
-      // Calculate total shot hours
-      const shotRows = (shots || []).map((shot, idx) => ({
-        shot_type: shot.shot_type,
-        quantity: shot.quantity || 1,
-        base_hours_each: shot.base_hours_each,
-        efficiency_multiplier: shot.efficiency_multiplier || 1.0,
-        adjusted_hours:
-          (shot.base_hours_each || 0) * (shot.quantity || 1) * (shot.efficiency_multiplier || 1.0),
-        sort_order: shot.sort_order ?? idx,
-      }));
+      const modeForVersion = parsed.data.mode ?? quote.mode;
 
-      const totalShotHours = shotRows.reduce((sum, s) => sum + s.adjusted_hours, 0);
-      const totalHours = totalShotHours + editingHours;
+      let poolHours: number | null = null;
+      let poolAmount: number | null = null;
+      if (modeForVersion === 'budget') {
+        if (parsed.data.pool_budget_hours !== undefined) {
+          poolHours = parsed.data.pool_budget_hours;
+          poolAmount =
+            parsed.data.pool_budget_amount !== undefined
+              ? parsed.data.pool_budget_amount
+              : (poolHours ?? 0) * hourlyRate;
+        } else if (parsed.data.pool_budget_amount !== undefined) {
+          poolAmount = parsed.data.pool_budget_amount;
+          poolHours = budgetToPoolHours(poolAmount ?? 0, hourlyRate);
+        } else {
+          poolHours = poolBudgetHours(durationSeconds, Number(rateCard.hours_per_second));
+          poolAmount = poolHours * hourlyRate;
+        }
+      }
 
-      // Create version
+      const shotRows = mapShots(parsed.data.shots ?? []);
+      const shotHours = totalShotHours(shotRows);
+      const editHours = editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s));
+      const total_hours = shotHours + editHours;
+
       const { rows: versionRows } = await client.query(
-        `INSERT INTO quote_versions (quote_id, version_number, duration_seconds, pool_budget_hours, total_hours, notes, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO quote_versions (
+            quote_id,
+            version_number,
+            duration_seconds,
+            shot_count,
+            pool_budget_hours,
+            pool_budget_amount,
+            total_hours,
+            hourly_rate,
+            notes,
+            created_by
+          )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
-        [req.params.id, nextVersion, duration_seconds, poolBudget, totalHours, notes || null, req.user!.id],
+        [
+          req.params.id,
+          nextRows[0].next_version,
+          durationSeconds,
+          shot_count,
+          poolHours,
+          poolAmount,
+          total_hours,
+          hourlyRate,
+          parsed.data.notes ?? null,
+          req.user!.id,
+        ],
       );
-      const version = versionRows[0];
 
-      // Create shots
-      const createdShots = [];
-      for (const s of shotRows) {
+      const version = versionRows[0];
+      const createdShots: unknown[] = [];
+
+      for (const shot of shotRows) {
         const { rows } = await client.query(
-          `INSERT INTO version_shots (version_id, shot_type, quantity, base_hours_each, efficiency_multiplier, adjusted_hours, sort_order)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `INSERT INTO version_shots (
+             version_id,
+             shot_type,
+             percentage,
+             quantity,
+             base_hours_each,
+             efficiency_multiplier,
+             adjusted_hours,
+             sort_order
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING *`,
-          [version.id, s.shot_type, s.quantity, s.base_hours_each, s.efficiency_multiplier, s.adjusted_hours, s.sort_order],
+          [
+            version.id,
+            shot.shot_type,
+            shot.percentage,
+            shot.quantity,
+            shot.base_hours_each,
+            shot.efficiency_multiplier,
+            shot.adjusted_hours,
+            shot.sort_order,
+          ],
         );
         createdShots.push(rows[0]);
       }
 
-      // Update quote updated_at
-      await client.query(
-        `UPDATE quotes SET updated_at = NOW() WHERE id = $1`,
-        [req.params.id],
-      );
+      await client.query('UPDATE quotes SET updated_at = NOW() WHERE id = $1', [req.params.id]);
+
+      if (modeForVersion !== quote.mode) {
+        await client.query('UPDATE quotes SET mode = $1 WHERE id = $2', [modeForVersion, req.params.id]);
+      }
 
       return { ...version, shots: createdShots };
     });
@@ -320,97 +515,157 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// PUT /api/quotes/:id/versions/:versionId -- update version shots
-// ---------------------------------------------------------------------------
+// PUT /api/quotes/:id/versions/:versionId
 router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
   try {
     const parsed = validate(updateVersionSchema, req.body);
-    if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
-    const { duration_seconds, shots, notes } = parsed.data;
+    if (!parsed.success) {
+      return res.status(400).json({ error: { message: parsed.error } });
+    }
 
     const result = await dbTransaction(async (client) => {
-      // Get rate card for calculations
       const { rows: quoteRows } = await client.query(
-        `SELECT rate_card_id FROM quotes WHERE id = $1`,
+        'SELECT id, mode, rate_card_id FROM quotes WHERE id = $1',
         [req.params.id],
       );
       const quote = quoteRows[0];
       if (!quote) throw httpError('Quote not found', 404);
 
+      const { rows: versionRows } = await client.query(
+        'SELECT * FROM quote_versions WHERE id = $1 AND quote_id = $2',
+        [req.params.versionId, req.params.id],
+      );
+      const existingVersion = versionRows[0];
+      if (!existingVersion) throw httpError('Version not found', 404);
+
       const { rows: rcRows } = await client.query(
-        `SELECT hours_per_second, editing_hours_per_30s FROM rate_cards WHERE id = $1`,
+        'SELECT hours_per_second, editing_hours_per_30s, hourly_rate FROM rate_cards WHERE id = $1',
         [quote.rate_card_id],
       );
       const rateCard = rcRows[0];
       if (!rateCard) throw httpError('Rate card not found', 400);
 
-      const dur = duration_seconds || 60;
-      const poolBudget = dur * rateCard.hours_per_second;
-      const editingHours = Math.ceil(dur / 30) * rateCard.editing_hours_per_30s;
-
-      // Recalculate shots
-      const shotRows = (shots || []).map((shot, idx) => ({
-        version_id: req.params.versionId,
-        shot_type: shot.shot_type,
-        quantity: shot.quantity || 1,
-        base_hours_each: shot.base_hours_each,
-        efficiency_multiplier: shot.efficiency_multiplier || 1.0,
-        adjusted_hours:
-          (shot.base_hours_each || 0) * (shot.quantity || 1) * (shot.efficiency_multiplier || 1.0),
-        sort_order: shot.sort_order ?? idx,
-      }));
-
-      const totalShotHours = shotRows.reduce((sum, s) => sum + s.adjusted_hours, 0);
-      const totalHours = totalShotHours + editingHours;
-
-      // Delete existing shots
-      await client.query(
-        `DELETE FROM version_shots WHERE version_id = $1`,
-        [req.params.versionId],
+      const durationSeconds = parsed.data.duration_seconds ?? existingVersion.duration_seconds;
+      const shot_count = shotCount(durationSeconds);
+      const hourlyRate = Number(
+        parsed.data.hourly_rate ?? existingVersion.hourly_rate ?? rateCard.hourly_rate ?? 125,
       );
 
-      // Insert new shots
-      const createdShots = [];
-      for (const s of shotRows) {
-        const { rows } = await client.query(
-          `INSERT INTO version_shots (version_id, shot_type, quantity, base_hours_each, efficiency_multiplier, adjusted_hours, sort_order)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           RETURNING *`,
-          [s.version_id, s.shot_type, s.quantity, s.base_hours_each, s.efficiency_multiplier, s.adjusted_hours, s.sort_order],
+      let shotRows: ReturnType<typeof mapShots>;
+      if (parsed.data.shots) {
+        shotRows = mapShots(parsed.data.shots);
+      } else {
+        const { rows: existingShots } = await client.query(
+          `SELECT shot_type, percentage, quantity, base_hours_each, efficiency_multiplier, sort_order
+           FROM version_shots
+           WHERE version_id = $1
+           ORDER BY sort_order ASC`,
+          [req.params.versionId],
         );
-        createdShots.push(rows[0]);
+        shotRows = mapShots(existingShots);
       }
 
-      // Update version
-      const setClauses = [
-        'duration_seconds = $1',
-        'pool_budget_hours = $2',
-        'total_hours = $3',
-      ];
-      const params: unknown[] = [dur, poolBudget, totalHours];
-      let paramIdx = 4;
+      const modeForVersion = parsed.data.mode ?? quote.mode;
 
-      if (notes !== undefined) {
-        setClauses.push(`notes = $${paramIdx}`);
-        params.push(notes);
-        paramIdx++;
+      let poolHours: number | null = null;
+      let poolAmount: number | null = null;
+
+      if (modeForVersion === 'budget') {
+        if (parsed.data.pool_budget_hours !== undefined) {
+          poolHours = parsed.data.pool_budget_hours;
+          poolAmount =
+            parsed.data.pool_budget_amount !== undefined
+              ? parsed.data.pool_budget_amount
+              : (poolHours ?? 0) * hourlyRate;
+        } else if (parsed.data.pool_budget_amount !== undefined) {
+          poolAmount = parsed.data.pool_budget_amount;
+          poolHours = budgetToPoolHours(poolAmount ?? 0, hourlyRate);
+        } else {
+          poolHours =
+            existingVersion.pool_budget_hours ??
+            poolBudgetHours(durationSeconds, Number(rateCard.hours_per_second));
+          poolAmount =
+            existingVersion.pool_budget_amount ?? (poolHours !== null ? poolHours * hourlyRate : null);
+        }
       }
 
-      params.push(req.params.versionId);
-      const { rows: versionRows } = await client.query(
-        `UPDATE quote_versions SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
-        params,
-      );
-      const version = versionRows[0];
+      const shotHours = totalShotHours(shotRows);
+      const editHours = editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s));
+      const total_hours = shotHours + editHours;
 
-      // Update quote updated_at
-      await client.query(
-        `UPDATE quotes SET updated_at = NOW() WHERE id = $1`,
-        [req.params.id],
+      if (parsed.data.shots) {
+        await client.query('DELETE FROM version_shots WHERE version_id = $1', [req.params.versionId]);
+      }
+
+      const persistedShots: unknown[] = [];
+      if (parsed.data.shots) {
+        for (const shot of shotRows) {
+          const { rows } = await client.query(
+            `INSERT INTO version_shots (
+               version_id,
+               shot_type,
+               percentage,
+               quantity,
+               base_hours_each,
+               efficiency_multiplier,
+               adjusted_hours,
+               sort_order
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING *`,
+            [
+              req.params.versionId,
+              shot.shot_type,
+              shot.percentage,
+              shot.quantity,
+              shot.base_hours_each,
+              shot.efficiency_multiplier,
+              shot.adjusted_hours,
+              shot.sort_order,
+            ],
+          );
+          persistedShots.push(rows[0]);
+        }
+      } else {
+        const { rows: existingShots } = await client.query(
+          'SELECT * FROM version_shots WHERE version_id = $1 ORDER BY sort_order ASC',
+          [req.params.versionId],
+        );
+        persistedShots.push(...existingShots);
+      }
+
+      const notes = parsed.data.notes !== undefined ? parsed.data.notes : existingVersion.notes;
+
+      const { rows: updatedRows } = await client.query(
+        `UPDATE quote_versions
+         SET duration_seconds = $1,
+             shot_count = $2,
+             pool_budget_hours = $3,
+             pool_budget_amount = $4,
+             total_hours = $5,
+             hourly_rate = $6,
+             notes = $7
+         WHERE id = $8
+         RETURNING *`,
+        [
+          durationSeconds,
+          shot_count,
+          poolHours,
+          poolAmount,
+          total_hours,
+          hourlyRate,
+          notes ?? null,
+          req.params.versionId,
+        ],
       );
 
-      return { ...version, shots: createdShots };
+      await client.query('UPDATE quotes SET updated_at = NOW() WHERE id = $1', [req.params.id]);
+
+      if (modeForVersion !== quote.mode) {
+        await client.query('UPDATE quotes SET mode = $1 WHERE id = $2', [modeForVersion, req.params.id]);
+      }
+
+      return { ...updatedRows[0], shots: persistedShots };
     });
 
     res.json(result);

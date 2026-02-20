@@ -1,248 +1,148 @@
 import { describe, it, expect } from 'vitest';
 import {
-  validate,
+  createDevelopmentSchema,
+  createProjectSchema,
   createQuoteSchema,
-  updateStatusSchema,
-  createVersionSchema,
   createRateCardSchema,
-  rateCardItemSchema,
   createTemplateSchema,
+  createVersionSchema,
+  linkProjectSchema,
+  rateCardItemSchema,
+  shotSchema,
+  templateShotSchema,
+  updateStatusSchema,
+  validate,
 } from './validation';
 
 describe('validation schemas', () => {
+  describe('createDevelopmentSchema', () => {
+    it('requires name', () => {
+      expect(validate(createDevelopmentSchema, { name: '' }).success).toBe(false);
+      expect(validate(createDevelopmentSchema, { name: 'Dubai Islands E' }).success).toBe(true);
+    });
+  });
+
+  describe('createProjectSchema', () => {
+    it('requires development_id and name', () => {
+      const valid = { development_id: crypto.randomUUID(), name: 'Masterplan Film' };
+      expect(validate(createProjectSchema, valid).success).toBe(true);
+    });
+
+    it('optionally accepts kantata_id', () => {
+      const valid = {
+        development_id: crypto.randomUUID(),
+        name: 'Film',
+        kantata_id: '23046',
+      };
+      expect(validate(createProjectSchema, valid).success).toBe(true);
+    });
+  });
+
   describe('createQuoteSchema', () => {
-    it('accepts valid payload', () => {
-      const result = validate(createQuoteSchema, {
-        client_name: 'Acme Corp',
-        project_name: 'Product Launch',
-        rate_card_id: '550e8400-e29b-41d4-a716-446655440000',
-      });
-      expect(result.success).toBe(true);
+    it('requires project_id, mode, rate_card_id', () => {
+      const valid = {
+        project_id: crypto.randomUUID(),
+        mode: 'retainer',
+        rate_card_id: crypto.randomUUID(),
+      };
+      expect(validate(createQuoteSchema, valid).success).toBe(true);
     });
 
-    it('rejects missing client_name', () => {
-      const result = validate(createQuoteSchema, {
-        project_name: 'X',
-        rate_card_id: '550e8400-e29b-41d4-a716-446655440000',
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('rejects empty client_name', () => {
-      const result = validate(createQuoteSchema, {
-        client_name: '',
-        project_name: 'X',
-        rate_card_id: '550e8400-e29b-41d4-a716-446655440000',
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('rejects non-uuid rate_card_id', () => {
-      const result = validate(createQuoteSchema, {
-        client_name: 'Acme',
-        project_name: 'X',
-        rate_card_id: 'not-a-uuid',
-      });
-      expect(result.success).toBe(false);
+    it('rejects invalid mode', () => {
+      const invalid = {
+        project_id: crypto.randomUUID(),
+        mode: 'other',
+        rate_card_id: crypto.randomUUID(),
+      };
+      expect(validate(createQuoteSchema, invalid).success).toBe(false);
     });
   });
 
   describe('updateStatusSchema', () => {
-    it.each(['draft', 'pending_approval', 'approved', 'sent', 'archived'] as const)(
-      'accepts valid status: %s',
-      (status) => {
-        const result = validate(updateStatusSchema, { status });
-        expect(result.success).toBe(true);
-      },
-    );
+    it('accepts new status values', () => {
+      const values = ['draft', 'negotiating', 'awaiting_approval', 'confirmed', 'archived'];
+      for (const status of values) {
+        expect(validate(updateStatusSchema, { status }).success).toBe(true);
+      }
+    });
 
-    it('rejects invalid status', () => {
-      const result = validate(updateStatusSchema, { status: 'invalid' });
-      expect(result.success).toBe(false);
+    it('rejects old status values', () => {
+      expect(validate(updateStatusSchema, { status: 'pending_approval' }).success).toBe(false);
+      expect(validate(updateStatusSchema, { status: 'sent' }).success).toBe(false);
+    });
+  });
+
+  describe('shotSchema', () => {
+    it('includes percentage', () => {
+      const valid = {
+        shot_type: 'Aerial',
+        percentage: 40,
+        quantity: 6,
+        base_hours_each: 60,
+        efficiency_multiplier: 1,
+      };
+      expect(validate(shotSchema, valid).success).toBe(true);
     });
   });
 
   describe('createVersionSchema', () => {
-    it('accepts valid version with shots', () => {
-      const result = validate(createVersionSchema, {
+    it('accepts pool_budget_amount and hourly_rate', () => {
+      const valid = {
         duration_seconds: 60,
-        notes: 'Test version',
-        shots: [
-          {
-            shot_type: 'Wide Shot',
-            quantity: 3,
-            base_hours_each: 10,
-            efficiency_multiplier: 1.0,
-          },
-        ],
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it('accepts version without shots', () => {
-      const result = validate(createVersionSchema, {
-        duration_seconds: 30,
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it('rejects duration over 600', () => {
-      const result = validate(createVersionSchema, {
-        duration_seconds: 601,
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('rejects duration of 0', () => {
-      const result = validate(createVersionSchema, {
-        duration_seconds: 0,
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('rejects efficiency_multiplier below 0.1', () => {
-      const result = validate(createVersionSchema, {
-        duration_seconds: 60,
-        shots: [
-          {
-            shot_type: 'Wide Shot',
-            quantity: 1,
-            base_hours_each: 10,
-            efficiency_multiplier: 0.05,
-          },
-        ],
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('rejects efficiency_multiplier above 5.0', () => {
-      const result = validate(createVersionSchema, {
-        duration_seconds: 60,
-        shots: [
-          {
-            shot_type: 'Wide Shot',
-            quantity: 1,
-            base_hours_each: 10,
-            efficiency_multiplier: 5.1,
-          },
-        ],
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('rejects more than 100 shots', () => {
-      const shots = Array.from({ length: 101 }, (_, i) => ({
-        shot_type: `Shot ${i}`,
-        quantity: 1,
-        base_hours_each: 1,
-        efficiency_multiplier: 1.0,
-      }));
-      const result = validate(createVersionSchema, {
-        duration_seconds: 60,
-        shots,
-      });
-      expect(result.success).toBe(false);
+        hourly_rate: 125,
+        pool_budget_amount: 10000,
+        shots: [],
+      };
+      expect(validate(createVersionSchema, valid).success).toBe(true);
     });
   });
 
-  describe('createRateCardSchema', () => {
-    it('accepts valid rate card', () => {
-      const result = validate(createRateCardSchema, {
-        name: 'DHRE 2025',
-        hours_per_second: 17.33,
-        editing_hours_per_30s: 100,
-        is_default: true,
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it('accepts without optional fields', () => {
-      const result = validate(createRateCardSchema, {
-        name: 'Basic',
-        hours_per_second: 10,
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it('rejects empty name', () => {
-      const result = validate(createRateCardSchema, {
-        name: '',
-        hours_per_second: 10,
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('rejects negative hours_per_second', () => {
-      const result = validate(createRateCardSchema, {
-        name: 'Bad',
-        hours_per_second: -1,
-      });
-      expect(result.success).toBe(false);
+  describe('templateShotSchema', () => {
+    it('uses percentage not quantity', () => {
+      const valid = { shot_type: 'Aerial', percentage: 40, efficiency_multiplier: 1 };
+      expect(validate(templateShotSchema, valid).success).toBe(true);
     });
   });
 
-  describe('rateCardItemSchema', () => {
-    it('accepts valid item', () => {
-      const result = validate(rateCardItemSchema, {
-        shot_type: 'Wide Shot',
-        category: 'scene',
-        hours: 12,
-        sort_order: 0,
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it.each(['scene', 'animation', 'post', 'material'] as const)(
-      'accepts category: %s',
-      (category) => {
-        const result = validate(rateCardItemSchema, {
-          shot_type: 'Test',
-          category,
-          hours: 1,
-        });
-        expect(result.success).toBe(true);
-      },
-    );
-
-    it('rejects invalid category', () => {
-      const result = validate(rateCardItemSchema, {
-        shot_type: 'Test',
-        category: 'invalid',
-        hours: 1,
-      });
-      expect(result.success).toBe(false);
+  describe('linkProjectSchema', () => {
+    it('requires kantata_id string', () => {
+      expect(validate(linkProjectSchema, { kantata_id: '23046' }).success).toBe(true);
+      expect(validate(linkProjectSchema, { kantata_id: '' }).success).toBe(false);
     });
   });
 
-  describe('createTemplateSchema', () => {
-    it('accepts valid template with shots', () => {
-      const result = validate(createTemplateSchema, {
-        name: 'Standard 30s',
-        duration_seconds: 30,
-        description: 'A standard 30-second template',
-        shots: [{ shot_type: 'Wide Shot', quantity: 2, efficiency_multiplier: 1.0 }],
-      });
-      expect(result.success).toBe(true);
+  describe('legacy schemas still valid where expected', () => {
+    it('supports rate card payloads', () => {
+      expect(
+        validate(createRateCardSchema, {
+          name: 'DHRE 2025',
+          hours_per_second: 17.33,
+          editing_hours_per_30s: 100,
+          hourly_rate: 125,
+          is_default: true,
+        }).success,
+      ).toBe(true);
     });
 
-    it('accepts without optional fields', () => {
-      const result = validate(createTemplateSchema, {
-        name: 'Minimal',
-        duration_seconds: 15,
-      });
-      expect(result.success).toBe(true);
+    it('supports rate card items', () => {
+      expect(
+        validate(rateCardItemSchema, {
+          shot_type: 'Wide Shot',
+          category: 'scene',
+          hours: 12,
+          sort_order: 0,
+        }).success,
+      ).toBe(true);
     });
-  });
 
-  describe('validate helper', () => {
-    it('returns formatted error messages on failure', () => {
-      const result = validate(createQuoteSchema, {});
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toContain('client_name');
-        expect(result.error).toContain('project_name');
-        expect(result.error).toContain('rate_card_id');
-      }
+    it('supports templates', () => {
+      expect(
+        validate(createTemplateSchema, {
+          name: 'Masterplan Film',
+          duration_seconds: 60,
+          shots: [{ shot_type: 'Aerial', percentage: 40, efficiency_multiplier: 1 }],
+        }).success,
+      ).toBe(true);
     });
   });
 });

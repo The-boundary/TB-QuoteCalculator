@@ -14,9 +14,9 @@ type StatusFilter = 'all' | QuoteStatus;
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'draft', label: 'Draft' },
-  { value: 'pending_approval', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'sent', label: 'Sent' },
+  { value: 'negotiating', label: 'Negotiating' },
+  { value: 'awaiting_approval', label: 'Awaiting Approval' },
+  { value: 'confirmed', label: 'Confirmed' },
 ];
 
 export function QuotesListPage() {
@@ -37,11 +37,13 @@ export function QuotesListPage() {
     // Search filter
     const term = search.toLowerCase().trim();
     if (term) {
-      result = result.filter(
-        (q) =>
-          q.client_name.toLowerCase().includes(term) || q.project_name.toLowerCase().includes(term),
-      );
-    }
+        result = result.filter(
+          (q) =>
+            q.project_name.toLowerCase().includes(term) ||
+            q.development_name.toLowerCase().includes(term) ||
+            (q.kantata_id ?? '').includes(term),
+        );
+      }
 
     return result;
   }, [quotes, statusFilter, search]);
@@ -50,7 +52,7 @@ export function QuotesListPage() {
     <>
       <PageHeader
         title="Quotes"
-        description="Film production quotes"
+        description="Legacy flat quote list"
         actions={
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4" />

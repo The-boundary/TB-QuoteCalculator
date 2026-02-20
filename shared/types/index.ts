@@ -1,11 +1,50 @@
-// ── Rate Cards ──────────────────────────────────────────────
+// Developments
+export interface Development {
+  id: string;
+  name: string;
+  client_name: string | null;
+  description: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
 
+// Projects
+export interface Project {
+  id: string;
+  development_id: string;
+  name: string;
+  kantata_id: string | null;
+  status: string | null;
+  is_forecasted: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectWithDevelopment extends Project {
+  development: Development;
+  quote_count: number;
+  latest_quote_status: QuoteStatus | null;
+}
+
+// Kantata (read-only)
+export interface KantataWorkspace {
+  kantata_id: string;
+  title: string;
+  status: string | null;
+  start_date: string | null;
+  due_date: string | null;
+}
+
+// Rate Cards
 export interface RateCard {
   id: string;
   name: string;
   is_default: boolean;
   hours_per_second: number;
   editing_hours_per_30s: number;
+  hourly_rate: number;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -24,14 +63,20 @@ export interface RateCardWithItems extends RateCard {
   items: RateCardItem[];
 }
 
-// ── Quotes ──────────────────────────────────────────────────
+// Quotes
+export type QuoteMode = 'retainer' | 'budget';
 
-export type QuoteStatus = 'draft' | 'pending_approval' | 'approved' | 'sent' | 'archived';
+export type QuoteStatus =
+  | 'draft'
+  | 'negotiating'
+  | 'awaiting_approval'
+  | 'confirmed'
+  | 'archived';
 
 export interface Quote {
   id: string;
-  client_name: string;
-  project_name: string;
+  project_id: string;
+  mode: QuoteMode;
   status: QuoteStatus;
   rate_card_id: string;
   created_by: string;
@@ -39,13 +84,26 @@ export interface Quote {
   updated_at: string;
 }
 
+export interface QuoteStatusLogEntry {
+  id: string;
+  quote_id: string;
+  old_status: QuoteStatus | null;
+  new_status: QuoteStatus;
+  changed_by: string;
+  changed_by_email: string | null;
+  changed_at: string;
+}
+
 export interface QuoteVersion {
   id: string;
   quote_id: string;
   version_number: number;
   duration_seconds: number;
-  pool_budget_hours: number;
+  shot_count: number;
+  pool_budget_hours: number | null;
+  pool_budget_amount: number | null;
   total_hours: number;
+  hourly_rate: number;
   notes: string | null;
   created_by: string;
   created_at: string;
@@ -55,6 +113,7 @@ export interface VersionShot {
   id: string;
   version_id: string;
   shot_type: string;
+  percentage: number;
   quantity: number;
   base_hours_each: number;
   efficiency_multiplier: number;
@@ -69,10 +128,11 @@ export interface QuoteVersionWithShots extends QuoteVersion {
 export interface QuoteWithVersions extends Quote {
   versions: QuoteVersionWithShots[];
   rate_card?: RateCard;
+  project?: Project;
+  status_log?: QuoteStatusLogEntry[];
 }
 
-// ── Film Templates ─────────────────────────────────────────
-
+// Film Templates
 export interface FilmTemplate {
   id: string;
   name: string;
@@ -88,7 +148,7 @@ export interface FilmTemplateShot {
   id: string;
   template_id: string;
   shot_type: string;
-  quantity: number;
+  percentage: number;
   efficiency_multiplier: number;
   sort_order: number;
 }

@@ -67,6 +67,7 @@ function RateCardDialog({ open, onOpenChange, rateCard }: RateCardDialogProps) {
   const [name, setName] = useState('');
   const [hoursPerSecond, setHoursPerSecond] = useState('');
   const [editingHours, setEditingHours] = useState('');
+  const [hourlyRate, setHourlyRate] = useState('125');
   const [isDefault, setIsDefault] = useState(false);
 
   useEffect(() => {
@@ -74,6 +75,7 @@ function RateCardDialog({ open, onOpenChange, rateCard }: RateCardDialogProps) {
       setName(rateCard?.name ?? '');
       setHoursPerSecond(rateCard?.hours_per_second?.toString() ?? '');
       setEditingHours(rateCard?.editing_hours_per_30s?.toString() ?? '');
+      setHourlyRate(rateCard?.hourly_rate?.toString() ?? '125');
       setIsDefault(rateCard?.is_default ?? false);
     }
   }, [open, rateCard]);
@@ -90,6 +92,7 @@ function RateCardDialog({ open, onOpenChange, rateCard }: RateCardDialogProps) {
       name: name.trim(),
       hours_per_second: Number(hoursPerSecond),
       editing_hours_per_30s: editingHours ? Number(editingHours) : undefined,
+      hourly_rate: hourlyRate ? Number(hourlyRate) : undefined,
       is_default: isDefault,
     };
 
@@ -147,6 +150,19 @@ function RateCardDialog({ open, onOpenChange, rateCard }: RateCardDialogProps) {
                 placeholder="e.g. 4"
                 value={editingHours}
                 onChange={(e) => setEditingHours(e.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="rc-hourly">Hourly Rate ($/hr)</Label>
+              <Input
+                id="rc-hourly"
+                type="number"
+                step="any"
+                min="0"
+                placeholder="e.g. 125"
+                value={hourlyRate}
+                onChange={(e) => setHourlyRate(e.target.value)}
               />
             </div>
 
@@ -468,6 +484,7 @@ function RateCardRow({ rateCard, isAdmin, onEdit }: RateCardRowProps) {
               <div className="mt-1 flex items-center gap-4 text-sm text-muted-foreground">
                 <span>{rateCard.hours_per_second} hrs/sec</span>
                 <span>{rateCard.editing_hours_per_30s} editing hrs/30s</span>
+                <span>${rateCard.hourly_rate}/hr</span>
               </div>
             </div>
           </div>

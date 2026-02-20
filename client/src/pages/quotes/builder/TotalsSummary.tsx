@@ -1,4 +1,4 @@
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 
@@ -6,8 +6,14 @@ interface TotalsSummaryProps {
   totalShotHours: number;
   editingHours: number;
   totalHours: number;
-  poolBudgetHours: number;
-  remaining: number;
+  poolBudgetHours: number | null;
+  remaining: number | null;
+  showPricing: boolean;
+  hourlyRate: number;
+}
+
+function formatCurrency(value: number): string {
+  return `$${value.toFixed(0)}`;
 }
 
 export function TotalsSummary({
@@ -16,8 +22,10 @@ export function TotalsSummary({
   totalHours,
   poolBudgetHours,
   remaining,
+  showPricing,
+  hourlyRate,
 }: TotalsSummaryProps) {
-  const isOver = remaining < 0;
+  const isOver = remaining !== null && remaining < 0;
 
   return (
     <Card>
@@ -25,19 +33,49 @@ export function TotalsSummary({
         <CardTitle className="text-base">Summary</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <Row label="Shots Total" value={`${totalShotHours.toFixed(1)} hrs`} />
-        <Row label="Post-Production" value={`${editingHours.toFixed(1)} hrs`} />
+        <Row
+          label="Shots Total"
+          hours={totalShotHours}
+          showPricing={showPricing}
+          cost={totalShotHours * hourlyRate}
+        />
+        <Row
+          label="Post-Production"
+          hours={editingHours}
+          showPricing={showPricing}
+          cost={editingHours * hourlyRate}
+        />
 
         <Separator />
 
-        <Row label="TOTAL" value={`${totalHours.toFixed(1)} hrs`} bold />
-        <Row label="POOL BUDGET" value={`${poolBudgetHours.toFixed(1)} hrs`} />
         <Row
-          label="REMAINING"
-          value={`${isOver ? '-' : ''}${Math.abs(remaining).toFixed(1)} hrs`}
+          label="TOTAL"
+          hours={totalHours}
           bold
-          className={isOver ? 'text-red-400' : 'text-emerald-400'}
+          showPricing={showPricing}
+          cost={totalHours * hourlyRate}
         />
+
+        {poolBudgetHours !== null && (
+          <Row
+            label="POOL BUDGET"
+            hours={poolBudgetHours}
+            showPricing={showPricing}
+            cost={poolBudgetHours * hourlyRate}
+          />
+        )}
+
+        {remaining !== null && (
+          <Row
+            label="REMAINING"
+            hours={Math.abs(remaining)}
+            bold
+            showPricing={showPricing}
+            cost={Math.abs(remaining) * hourlyRate}
+            className={isOver ? 'text-red-400' : 'text-emerald-400'}
+            sign={isOver ? '-' : ''}
+          />
+        )}
       </CardContent>
     </Card>
   );
@@ -45,21 +83,31 @@ export function TotalsSummary({
 
 function Row({
   label,
-  value,
+  hours,
+  cost,
+  showPricing,
   bold,
   className,
+  sign,
 }: {
   label: string;
-  value: string;
+  hours: number;
+  cost: number;
+  showPricing: boolean;
   bold?: boolean;
   className?: string;
+  sign?: string;
 }) {
   return (
     <div className="flex items-center justify-between text-sm">
       <span className={cn('text-muted-foreground', bold && 'font-semibold text-foreground')}>
         {label}
       </span>
-      <span className={cn('tabular-nums', bold && 'font-semibold', className)}>{value}</span>
+      <span className={cn('tabular-nums', bold && 'font-semibold', className)}>
+        {sign ?? ''}
+        {hours.toFixed(1)} hrs
+        {showPricing && <span className="ml-1 text-xs text-muted-foreground">({formatCurrency(cost)})</span>}
+      </span>
     </div>
   );
 }

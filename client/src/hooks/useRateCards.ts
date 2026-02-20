@@ -24,6 +24,7 @@ export function useCreateRateCard() {
       name: string;
       hours_per_second: number;
       editing_hours_per_30s?: number;
+      hourly_rate?: number;
       is_default?: boolean;
     }) => api.post<RateCard>('/rate-cards', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['rate-cards'] }),
@@ -41,6 +42,7 @@ export function useUpdateRateCard() {
       name?: string;
       hours_per_second?: number;
       editing_hours_per_30s?: number;
+      hourly_rate?: number;
       is_default?: boolean;
     }) => api.put<RateCard>(`/rate-cards/${id}`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['rate-cards'] }),

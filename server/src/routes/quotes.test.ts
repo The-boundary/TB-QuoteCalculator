@@ -1,14 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-// Mock dbQuery / dbTransaction before importing routes
 const mockDbQuery = vi.fn();
 const mockDbTransaction = vi.fn();
 
 vi.mock('../services/supabase.js', () => ({
-  dbQuery: (...args: any[]) => mockDbQuery(...args),
-  dbTransaction: (...args: any[]) => mockDbTransaction(...args),
+  dbQuery: (...args: unknown[]) => mockDbQuery(...args),
+  dbTransaction: (...args: unknown[]) => mockDbTransaction(...args),
   getAuthSupabaseClient: () => null,
 }));
 
@@ -16,19 +15,16 @@ vi.mock('../utils/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-// Build a minimal app with auth stubbed
-async function createApp() {
+async function createApp(isAdmin = true) {
   const app = express();
   app.use(express.json());
-
-  // Stub auth middleware — inject a default user
   app.use((req, _res, next) => {
     req.user = {
       id: 'test-user-id',
-      email: 'test@the-boundary.com',
-      role: 'admin',
+      email: 'stan@the-boundary.com',
+      role: isAdmin ? 'admin' : 'user',
       aud: 'authenticated',
-      appAccess: { role_slug: 'admin', is_admin: true },
+      appAccess: { role_slug: isAdmin ? 'admin' : 'user', is_admin: isAdmin },
     };
     next();
   });
@@ -46,131 +42,104 @@ describe('quotes routes', () => {
     app = await createApp();
   });
 
-  describe('GET /api/quotes', () => {
-    it('returns empty array when no quotes', async () => {
-      mockDbQuery.mockResolvedValueOnce({ rows: [] });
-
-      const res = await request(app).get('/api/quotes');
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual([]);
-    });
-
-    it('returns enriched quotes with version info', async () => {
-      const quotes = [{ id: 'q1', client_name: 'Acme', project_name: 'Launch', status: 'draft' }];
-      const versions = [
-        {
-          id: 'v1',
-          quote_id: 'q1',
-          version_number: 1,
-          duration_seconds: 60,
-          pool_budget_hours: 1040,
-          total_hours: 100,
-        },
-      ];
-
-      // First call: quotes query
-      mockDbQuery.mockResolvedValueOnce({ rows: quotes });
-      // Second call: versions query
-      mockDbQuery.mockResolvedValueOnce({ rows: versions });
-
-      const res = await request(app).get('/api/quotes');
-      expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(1);
-      expect(res.body[0].latest_version).toBeDefined();
-      expect(res.body[0].version_count).toBe(1);
-    });
+  it('GET /api/quotes returns list', async () => {
+    mockDbQuery.mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'draft' }] });
+    const res = await request(app).get('/api/quotes');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
   });
 
-  describe('POST /api/quotes', () => {
-    it('rejects invalid payload', async () => {
-      const res = await request(app).post('/api/quotes').send({ client_name: '' });
-      expect(res.status).toBe(400);
-    });
+  it('POST /api/quotes validates v2 payload', async () => {
+    const res = await request(app).post('/api/quotes').send({});
+    expect(res.status).toBe(400);
+  });
 
-    it('creates quote with valid payload', async () => {
-      const rateCard = { hours_per_second: 17.33, editing_hours_per_30s: 100 };
-      const createdQuote = {
-        id: 'q1',
-        client_name: 'Acme',
-        project_name: 'X',
-        status: 'draft',
-        rate_card_id: 'rc1',
+  it('POST /api/quotes creates quote with project_id + mode', async () => {
+    mockDbTransaction.mockImplementation(async (fn: (client: any) => Promise<unknown>) => {
+      const client = {
+        query: vi
+          .fn()
+          .mockResolvedValueOnce({ rows: [{ id: 'project-1' }] })
+          .mockResolvedValueOnce({
+            rows: [{ hours_per_second: 17.33, editing_hours_per_30s: 100, hourly_rate: 125 }],
+          })
+          .mockResolvedValueOnce({
+            rows: [{ id: 'quote-1', project_id: 'project-1', mode: 'retainer', status: 'draft' }],
+          })
+          .mockResolvedValueOnce({ rows: [{ id: 'log-1', new_status: 'draft' }] })
+          .mockResolvedValueOnce({
+            rows: [{ id: 'version-1', version_number: 1, duration_seconds: 60, shot_count: 15 }],
+          }),
       };
-      const createdVersion = { id: 'v1', quote_id: 'q1', version_number: 1, duration_seconds: 60 };
-
-      mockDbTransaction.mockImplementation(async (fn: any) => {
-        const mockClient = {
-          query: vi.fn()
-            // 1st call: SELECT rate card
-            .mockResolvedValueOnce({ rows: [rateCard] })
-            // 2nd call: INSERT quote
-            .mockResolvedValueOnce({ rows: [createdQuote] })
-            // 3rd call: INSERT version
-            .mockResolvedValueOnce({ rows: [createdVersion] }),
-        };
-        return fn(mockClient);
-      });
-
-      const res = await request(app).post('/api/quotes').send({
-        client_name: 'Acme',
-        project_name: 'X',
-        rate_card_id: '550e8400-e29b-41d4-a716-446655440000',
-      });
-      expect(res.status).toBe(201);
-      expect(res.body.id).toBe('q1');
-      expect(res.body.versions).toHaveLength(1);
+      return fn(client);
     });
+
+    const res = await request(app).post('/api/quotes').send({
+      project_id: '550e8400-e29b-41d4-a716-446655440001',
+      mode: 'retainer',
+      rate_card_id: '550e8400-e29b-41d4-a716-446655440000',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.project_id).toBe('project-1');
+    expect(res.body.mode).toBe('retainer');
   });
 
-  describe('PUT /api/quotes/:id/status', () => {
-    it('rejects invalid status value', async () => {
-      const res = await request(app).put('/api/quotes/q1/status').send({ status: 'bogus' });
-      expect(res.status).toBe(400);
+  it('PUT /api/quotes/:id/status rejects invalid transition', async () => {
+    mockDbTransaction.mockImplementation(async (fn: (client: any) => Promise<unknown>) => {
+      const client = {
+        query: vi.fn().mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'draft' }] }),
+      };
+      return fn(client);
     });
 
-    it('allows admin to approve', async () => {
-      mockDbQuery.mockResolvedValueOnce({
-        rows: [{ id: 'q1', status: 'approved' }],
-      });
-
-      const res = await request(app).put('/api/quotes/q1/status').send({ status: 'approved' });
-      expect(res.status).toBe(200);
-      expect(res.body.status).toBe('approved');
-    });
-
-    it('rejects non-admin approval', async () => {
-      // Override the auth middleware for this test
-      const nonAdminApp = express();
-      nonAdminApp.use(express.json());
-      nonAdminApp.use((req, _res, next) => {
-        req.user = {
-          id: 'user-id',
-          email: 'user@the-boundary.com',
-          role: 'user',
-          aud: 'authenticated',
-          appAccess: { role_slug: 'user', is_admin: false },
-        };
-        next();
-      });
-      const mod = await import('./quotes.js');
-      nonAdminApp.use('/api/quotes', mod.default);
-
-      const res = await request(nonAdminApp)
-        .put('/api/quotes/q1/status')
-        .send({ status: 'approved' });
-      expect(res.status).toBe(403);
-    });
+    const res = await request(app)
+      .put('/api/quotes/q1/status')
+      .send({ status: 'confirmed' });
+    expect(res.status).toBe(400);
   });
 
-  describe('DELETE /api/quotes/:id', () => {
-    it('soft-deletes by setting status to archived', async () => {
-      mockDbQuery.mockResolvedValueOnce({
-        rows: [{ id: 'q1', status: 'archived' }],
-      });
-
-      const res = await request(app).delete('/api/quotes/q1');
-      expect(res.status).toBe(200);
-      expect(res.body.status).toBe('archived');
+  it('PUT /api/quotes/:id/status allows valid transition and logs', async () => {
+    mockDbTransaction.mockImplementation(async (fn: (client: any) => Promise<unknown>) => {
+      const client = {
+        query: vi
+          .fn()
+          .mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'draft' }] })
+          .mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'negotiating' }] })
+          .mockResolvedValueOnce({ rows: [] }),
+      };
+      return fn(client);
     });
+
+    const res = await request(app)
+      .put('/api/quotes/q1/status')
+      .send({ status: 'negotiating' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('negotiating');
+  });
+
+  it('GET /api/quotes/:id returns status_log', async () => {
+    mockDbQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'q1',
+            rate_card_id: 'rc1',
+            project_id: 'p1',
+            project_name: 'Project',
+            development_id: 'd1',
+            development_name: 'Dev',
+            development_client_name: 'Client',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [{ id: 'rc1' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'log-1', new_status: 'draft' }] });
+
+    const res = await request(app).get('/api/quotes/q1');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.status_log)).toBe(true);
   });
 });

@@ -8,22 +8,24 @@ import type { QuoteVersionWithShots } from '../../../../shared/types';
 interface VersionCardProps {
   version: QuoteVersionWithShots;
   quoteId: string;
+  projectId: string;
 }
 
-export function VersionCard({ version, quoteId }: VersionCardProps) {
+export function VersionCard({ version, quoteId, projectId }: VersionCardProps) {
   const navigate = useNavigate();
 
   const usagePercent =
-    version.pool_budget_hours > 0
+    version.pool_budget_hours && version.pool_budget_hours > 0
       ? Math.min((version.total_hours / version.pool_budget_hours) * 100, 100)
       : 0;
 
-  const isOverBudget = version.total_hours > version.pool_budget_hours;
+  const isOverBudget =
+    version.pool_budget_hours !== null && version.total_hours > version.pool_budget_hours;
 
   return (
     <Card
       className="cursor-pointer transition-colors hover:border-sb-brand/50"
-      onClick={() => navigate(`/quotes/${quoteId}/versions/${version.id}/build`)}
+      onClick={() => navigate(`/projects/${projectId}/quotes/${quoteId}/versions/${version.id}/build`)}
     >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
@@ -49,7 +51,9 @@ export function VersionCard({ version, quoteId }: VersionCardProps) {
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Hours</span>
             <span className={isOverBudget ? 'text-red-400 font-medium' : 'text-foreground'}>
-              {version.total_hours} / {version.pool_budget_hours} hrs
+              {version.pool_budget_hours !== null
+                ? `${version.total_hours} / ${version.pool_budget_hours} hrs`
+                : `${version.total_hours} hrs`}
             </span>
           </div>
           <Progress

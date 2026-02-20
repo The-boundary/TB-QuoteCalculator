@@ -47,7 +47,7 @@ export function ApplyTemplatePicker({ onApply, open, onOpenChange }: ApplyTempla
             </div>
           ) : (
             sorted.map((t) => {
-              const totalShots = t.shots.reduce((sum, s) => sum + s.quantity, 0);
+              const totalPct = t.shots.reduce((sum, s) => sum + s.percentage, 0);
               return (
                 <button
                   key={t.id}
@@ -58,7 +58,7 @@ export function ApplyTemplatePicker({ onApply, open, onOpenChange }: ApplyTempla
                     <span className="font-medium">{t.name}</span>
                     <span className="text-xs text-muted-foreground flex items-center gap-1">
                       <Clock className="h-3 w-3" />
-                      {formatDuration(t.duration_seconds)} &middot; {totalShots} shots
+                      {formatDuration(t.duration_seconds)} &middot; {totalPct.toFixed(0)}%
                     </span>
                   </div>
                 </button>

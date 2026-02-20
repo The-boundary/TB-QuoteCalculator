@@ -1,25 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
   Select,
-  SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@/components/ui/select';
 import { useCreateQuote } from '@/hooks/useQuotes';
 import { useRateCards } from '@/hooks/useRateCards';
+import { useProjects } from '@/hooks/useProjects';
+import type { QuoteMode } from '../../../../shared/types';
 
 interface CreateQuoteDialogProps {
   open: boolean;
@@ -28,93 +29,101 @@ interface CreateQuoteDialogProps {
 
 export function CreateQuoteDialog({ open, onOpenChange }: CreateQuoteDialogProps) {
   const navigate = useNavigate();
+  const { data: projects } = useProjects();
   const { data: rateCards } = useRateCards();
   const createQuote = useCreateQuote();
 
-  const [clientName, setClientName] = useState('');
-  const [projectName, setProjectName] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [rateCardId, setRateCardId] = useState('');
+  const [mode, setMode] = useState<QuoteMode>('retainer');
 
-  // Set the default rate card when rate cards load
+  const defaultProjectId = useMemo(() => projects?.[0]?.id ?? '', [projects]);
+  const defaultRateCardId = useMemo(
+    () => rateCards?.find((rateCard) => rateCard.is_default)?.id ?? rateCards?.[0]?.id ?? '',
+    [rateCards],
+  );
+
   useEffect(() => {
-    if (rateCards && rateCards.length > 0 && !rateCardId) {
-      const defaultCard = rateCards.find((rc) => rc.is_default) ?? rateCards[0];
-      if (defaultCard) {
-        setRateCardId(defaultCard.id);
-      }
-    }
-  }, [rateCards, rateCardId]);
+    if (!open) return;
+    setProjectId(defaultProjectId);
+    setRateCardId(defaultRateCardId);
+    setMode('retainer');
+  }, [open, defaultProjectId, defaultRateCardId]);
 
-  // Reset form when dialog opens
-  useEffect(() => {
-    if (open) {
-      setClientName('');
-      setProjectName('');
-      if (rateCards && rateCards.length > 0) {
-        const defaultCard = rateCards.find((rc) => rc.is_default) ?? rateCards[0];
-        setRateCardId(defaultCard?.id ?? '');
-      }
-    }
-  }, [open, rateCards]);
+  const finalProjectId = projectId || defaultProjectId;
+  const finalRateCardId = rateCardId || defaultRateCardId;
+  const canSubmit = Boolean(finalProjectId && finalRateCardId);
 
-  const canSubmit = clientName.trim() !== '' && projectName.trim() !== '' && rateCardId !== '';
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
     if (!canSubmit) return;
 
-    const newQuote = await createQuote.mutateAsync({
-      client_name: clientName.trim(),
-      project_name: projectName.trim(),
-      rate_card_id: rateCardId,
+    const quote = await createQuote.mutateAsync({
+      project_id: finalProjectId,
+      mode,
+      rate_card_id: finalRateCardId,
     });
 
     onOpenChange(false);
-    navigate(`/quotes/${newQuote.id}`);
+    navigate(`/projects/${finalProjectId}/quotes/${quote.id}`);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>New Quote</DialogTitle>
-            <DialogDescription>Create a new film production quote.</DialogDescription>
+            <DialogDescription>Create a quote in the new project-based model.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="client-name">Client Name</Label>
-              <Input
-                id="client-name"
-                placeholder="e.g. BBC Studios"
-                value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                autoFocus
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="project-name">Project Name</Label>
-              <Input
-                id="project-name"
-                placeholder="e.g. Planet Earth IV"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="rate-card">Rate Card</Label>
-              <Select value={rateCardId} onValueChange={setRateCardId}>
-                <SelectTrigger id="rate-card">
-                  <SelectValue placeholder="Select a rate card" />
+              <Label>Project</Label>
+              <Select value={finalProjectId} onValueChange={setProjectId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {rateCards?.map((rc) => (
-                    <SelectItem key={rc.id} value={rc.id}>
-                      {rc.name}
-                      {rc.is_default ? ' (Default)' : ''}
+                  {projects?.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Mode</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={mode === 'retainer' ? 'default' : 'outline'}
+                  onClick={() => setMode('retainer')}
+                >
+                  Retainer
+                </Button>
+                <Button
+                  type="button"
+                  variant={mode === 'budget' ? 'default' : 'outline'}
+                  onClick={() => setMode('budget')}
+                >
+                  Budget
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Rate Card</Label>
+              <Select value={finalRateCardId} onValueChange={setRateCardId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select rate card" />
+                </SelectTrigger>
+                <SelectContent>
+                  {rateCards?.map((rateCard) => (
+                    <SelectItem key={rateCard.id} value={rateCard.id}>
+                      {rateCard.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -1,218 +1,112 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, ChevronDown, ChevronRight, Pencil, Trash2, Clock, Film } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/context/AuthContext';
-import { formatDuration } from '@/lib/utils';
 import {
-  useTemplates,
   useCreateTemplate,
-  useUpdateTemplate,
   useDeleteTemplate,
+  useTemplates,
+  useUpdateTemplate,
 } from '@/hooks/useTemplates';
-import { useRateCards } from '@/hooks/useRateCards';
-import type { FilmTemplateWithShots, FilmTemplateShot } from '../../../shared/types';
+import type { FilmTemplateShot, FilmTemplateWithShots } from '../../../shared/types';
 
-// ── Shot Row (editable inline) ──────────────────────────────
-
-interface ShotRowProps {
-  shot: FilmTemplateShot;
-  isAdmin: boolean;
-  onUpdate: (idx: number, field: string, value: string | number) => void;
-  onRemove: (idx: number) => void;
-  index: number;
+function calcShotCount(durationSeconds: number): number {
+  if (durationSeconds <= 15) return 5;
+  return Math.ceil(durationSeconds / 4);
 }
 
-function ShotRow({ shot, isAdmin, onUpdate, onRemove, index }: ShotRowProps) {
-  return (
-    <TableRow>
-      <TableCell>
-        {isAdmin ? (
-          <Input
-            value={shot.shot_type}
-            onChange={(e) => onUpdate(index, 'shot_type', e.target.value)}
-            className="h-8"
-          />
-        ) : (
-          shot.shot_type
-        )}
-      </TableCell>
-      <TableCell>
-        {isAdmin ? (
-          <Input
-            type="number"
-            min="1"
-            value={shot.quantity}
-            onChange={(e) => onUpdate(index, 'quantity', parseInt(e.target.value) || 1)}
-            className="h-8 w-20"
-          />
-        ) : (
-          shot.quantity
-        )}
-      </TableCell>
-      <TableCell>
-        {isAdmin ? (
-          <Input
-            type="number"
-            step="0.1"
-            min="0.1"
-            max="5.0"
-            value={shot.efficiency_multiplier}
-            onChange={(e) =>
-              onUpdate(index, 'efficiency_multiplier', parseFloat(e.target.value) || 1)
-            }
-            className="h-8 w-20"
-          />
-        ) : (
-          `${shot.efficiency_multiplier}x`
-        )}
-      </TableCell>
-      <TableCell>
-        {isAdmin && (
-          <Button size="icon-sm" variant="ghost" onClick={() => onRemove(index)}>
-            <Trash2 className="h-3 w-3 text-destructive" />
-          </Button>
-        )}
-      </TableCell>
-    </TableRow>
-  );
+function distributeByPercentage(total: number, shots: FilmTemplateShot[]) {
+  const rows = shots.map((shot) => {
+    const raw = total * (shot.percentage / 100);
+    const floored = Math.floor(raw);
+    return { shot_type: shot.shot_type, raw, floored, rem: raw - floored };
+  });
+
+  let remaining = total - rows.reduce((sum, row) => sum + row.floored, 0);
+  const sorted = [...rows].sort((a, b) => b.rem - a.rem);
+  let index = 0;
+  while (remaining > 0 && sorted.length > 0) {
+    sorted[index % sorted.length].floored += 1;
+    remaining -= 1;
+    index += 1;
+  }
+
+  return rows.map((row) => ({ shot_type: row.shot_type, quantity: row.floored }));
 }
 
-// ── Template Dialog (Create / Edit) ─────────────────────────
-
-interface TemplateDialogProps {
+function TemplateDialog({
+  open,
+  onOpenChange,
+  template,
+}: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   template?: FilmTemplateWithShots | null;
-}
-
-function TemplateDialog({ open, onOpenChange, template }: TemplateDialogProps) {
+}) {
   const createTemplate = useCreateTemplate();
   const updateTemplate = useUpdateTemplate();
-  const { data: rateCards } = useRateCards();
-  const isEdit = !!template;
+  const [name, setName] = useState(template?.name ?? '');
+  const [duration, setDuration] = useState(String(template?.duration_seconds ?? 60));
 
-  const [name, setName] = useState('');
-  const [duration, setDuration] = useState('');
-  const [description, setDescription] = useState('');
-  const [rateCardId, setRateCardId] = useState('');
-
-  useEffect(() => {
-    if (open) {
-      setName(template?.name ?? '');
-      setDuration(template?.duration_seconds?.toString() ?? '');
-      setDescription(template?.description ?? '');
-      setRateCardId(template?.rate_card_id ?? '');
-    }
-  }, [open, template]);
-
-  const canSubmit =
-    name.trim() !== '' && duration !== '' && !isNaN(Number(duration)) && Number(duration) > 0;
+  const isEdit = Boolean(template);
   const isPending = createTemplate.isPending || updateTemplate.isPending;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canSubmit) return;
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!name.trim()) return;
 
     const payload = {
       name: name.trim(),
-      duration_seconds: Number(duration),
-      description: description.trim() || null,
-      rate_card_id: rateCardId || null,
+      duration_seconds: Math.max(1, Number(duration) || 60),
     };
 
-    if (isEdit && template) {
+    if (template) {
       await updateTemplate.mutateAsync({ id: template.id, ...payload });
     } else {
       await createTemplate.mutateAsync(payload);
     }
+
     onOpenChange(false);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>{isEdit ? 'Edit Template' : 'New Template'}</DialogTitle>
-            <DialogDescription>
-              {isEdit ? 'Update template metadata.' : 'Create a new film template.'}
-            </DialogDescription>
+            <DialogDescription>Template shots are percentage-based and should total 100%.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="tpl-name">Name</Label>
-              <Input
-                id="tpl-name"
-                placeholder="e.g. 60s Film"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus
-              />
+              <Label>Name</Label>
+              <Input value={name} onChange={(event) => setName(event.target.value)} />
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="tpl-duration">Duration (seconds)</Label>
+              <Label>Duration (seconds)</Label>
               <Input
-                id="tpl-duration"
                 type="number"
-                min="1"
-                max="600"
-                placeholder="e.g. 60"
+                min={1}
+                max={600}
                 value={duration}
-                onChange={(e) => setDuration(e.target.value)}
+                onChange={(event) => setDuration(event.target.value)}
               />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="tpl-desc">Description</Label>
-              <Textarea
-                id="tpl-desc"
-                placeholder="Optional description..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="tpl-rc">Rate Card</Label>
-              <select
-                id="tpl-rc"
-                value={rateCardId}
-                onChange={(e) => setRateCardId(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="">None</option>
-                {rateCards?.map((rc) => (
-                  <option key={rc.id} value={rc.id}>
-                    {rc.name}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
 
@@ -220,8 +114,8 @@ function TemplateDialog({ open, onOpenChange, template }: TemplateDialogProps) {
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!canSubmit || isPending}>
-              {isPending ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Template'}
+            <Button type="submit" disabled={isPending}>
+              {isPending ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
         </form>
@@ -230,203 +124,148 @@ function TemplateDialog({ open, onOpenChange, template }: TemplateDialogProps) {
   );
 }
 
-// ── Delete Confirmation Dialog ──────────────────────────────
-
-interface DeleteDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  template: FilmTemplateWithShots | null;
-}
-
-function DeleteDialog({ open, onOpenChange, template }: DeleteDialogProps) {
-  const deleteTemplate = useDeleteTemplate();
-
-  async function handleDelete() {
-    if (!template) return;
-    await deleteTemplate.mutateAsync(template.id);
-    onOpenChange(false);
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Delete Template</DialogTitle>
-          <DialogDescription>
-            Are you sure you want to delete &ldquo;{template?.name}&rdquo;? This cannot be undone.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button variant="destructive" onClick={handleDelete} disabled={deleteTemplate.isPending}>
-            {deleteTemplate.isPending ? 'Deleting...' : 'Delete'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ── Expandable Template Card ────────────────────────────────
-
-interface TemplateCardProps {
+function TemplateCard({
+  template,
+  isAdmin,
+  onDelete,
+}: {
   template: FilmTemplateWithShots;
   isAdmin: boolean;
-  onEdit: (t: FilmTemplateWithShots) => void;
-  onDelete: (t: FilmTemplateWithShots) => void;
-}
-
-function TemplateCard({ template, isAdmin, onEdit, onDelete }: TemplateCardProps) {
-  const [expanded, setExpanded] = useState(false);
+  onDelete: (templateId: string) => void;
+}) {
   const updateTemplate = useUpdateTemplate();
-  const { data: rateCards } = useRateCards();
+  const [expanded, setExpanded] = useState(false);
+  const [localShots, setLocalShots] = useState(template.shots);
 
-  // Local editable copy of shots
-  const [localShots, setLocalShots] = useState<FilmTemplateShot[]>(template.shots);
-  const [dirty, setDirty] = useState(false);
+  const totalPct = useMemo(
+    () => localShots.reduce((sum, shot) => sum + shot.percentage, 0),
+    [localShots],
+  );
+  const preview = useMemo(() => {
+    const shotCount = calcShotCount(template.duration_seconds);
+    return distributeByPercentage(shotCount, localShots);
+  }, [template.duration_seconds, localShots]);
 
-  useEffect(() => {
-    setLocalShots(template.shots);
-    setDirty(false);
-  }, [template.shots]);
-
-  const totalShots = localShots.reduce((sum, s) => sum + s.quantity, 0);
-
-  const rateCardName = rateCards?.find((rc) => rc.id === template.rate_card_id)?.name;
-
-  const handleShotUpdate = useCallback((idx: number, field: string, value: string | number) => {
-    setLocalShots((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [field]: value };
-      return next;
+  async function saveShots() {
+    await updateTemplate.mutateAsync({
+      id: template.id,
+      shots: localShots.map((shot, index) => ({
+        shot_type: shot.shot_type,
+        percentage: shot.percentage,
+        efficiency_multiplier: shot.efficiency_multiplier,
+        sort_order: index,
+      })),
     });
-    setDirty(true);
-  }, []);
-
-  const handleShotRemove = useCallback((idx: number) => {
-    setLocalShots((prev) => prev.filter((_, i) => i !== idx));
-    setDirty(true);
-  }, []);
-
-  const handleAddShot = useCallback(() => {
-    setLocalShots((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        template_id: template.id,
-        shot_type: '',
-        quantity: 1,
-        efficiency_multiplier: 1.0,
-        sort_order: prev.length,
-      },
-    ]);
-    setDirty(true);
-  }, [template.id]);
-
-  async function handleSaveShots() {
-    const shots = localShots
-      .filter((s) => s.shot_type.trim() !== '')
-      .map((s, idx) => ({
-        shot_type: s.shot_type.trim(),
-        quantity: s.quantity,
-        efficiency_multiplier: s.efficiency_multiplier,
-        sort_order: idx,
-      }));
-    await updateTemplate.mutateAsync({ id: template.id, shots });
-    setDirty(false);
   }
 
   return (
     <Card>
-      <CardHeader
-        className="cursor-pointer select-none"
-        onClick={() => setExpanded((prev) => !prev)}
-      >
+      <CardHeader className="cursor-pointer" onClick={() => setExpanded((value) => !value)}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {expanded ? (
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
             )}
             <div>
-              <div className="flex items-center gap-2">
-                <Film className="h-4 w-4 text-muted-foreground" />
-                <span className="font-semibold">{template.name}</span>
-              </div>
-              <div className="mt-1 flex items-center gap-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  {formatDuration(template.duration_seconds)}
-                </span>
-                <span>{totalShots} shots</span>
-                {rateCardName && <Badge variant="secondary">{rateCardName}</Badge>}
-              </div>
-              {template.description && (
-                <p className="mt-1 text-xs text-muted-foreground">{template.description}</p>
-              )}
+              <p className="font-semibold">{template.name}</p>
+              <p className="text-xs text-muted-foreground">{template.duration_seconds}s</p>
             </div>
           </div>
-
-          {isAdmin && (
-            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-              <Button size="sm" variant="ghost" onClick={() => onEdit(template)}>
-                <Pencil className="h-3 w-3" />
-                Edit
+          <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+            {Math.abs(totalPct - 100) > 0.01 && <Badge variant="warning">{totalPct.toFixed(1)}%</Badge>}
+            {isAdmin && (
+              <Button size="icon-sm" variant="ghost" onClick={() => onDelete(template.id)}>
+                <Trash2 className="h-3.5 w-3.5 text-destructive" />
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => onDelete(template)}>
-                <Trash2 className="h-3 w-3 text-destructive" />
-              </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </CardHeader>
 
       {expanded && (
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Shot Type</TableHead>
-                <TableHead className="w-[100px]">Qty</TableHead>
-                <TableHead className="w-[100px]">Efficiency</TableHead>
-                <TableHead className="w-[60px]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {localShots.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No shots in this template.
-                  </TableCell>
-                </TableRow>
-              )}
-              {localShots.map((shot, idx) => (
-                <ShotRow
-                  key={shot.id}
-                  shot={shot}
-                  index={idx}
-                  isAdmin={isAdmin}
-                  onUpdate={handleShotUpdate}
-                  onRemove={handleShotRemove}
-                />
-              ))}
-            </TableBody>
-          </Table>
+        <CardContent className="space-y-3">
+          {localShots.map((shot, index) => (
+            <div key={shot.id} className="grid grid-cols-[2fr_1fr_1fr] items-center gap-2">
+              <Input
+                value={shot.shot_type}
+                onChange={(event) =>
+                  setLocalShots((prev) =>
+                    prev.map((row, rowIndex) =>
+                      rowIndex === index ? { ...row, shot_type: event.target.value } : row,
+                    ),
+                  )
+                }
+                disabled={!isAdmin}
+              />
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={shot.percentage}
+                onChange={(event) =>
+                  setLocalShots((prev) =>
+                    prev.map((row, rowIndex) =>
+                      rowIndex === index
+                        ? { ...row, percentage: Math.max(0, Number(event.target.value) || 0) }
+                        : row,
+                    ),
+                  )
+                }
+                disabled={!isAdmin}
+              />
+              <Input
+                type="number"
+                min={0.1}
+                max={5}
+                step={0.1}
+                value={shot.efficiency_multiplier}
+                onChange={(event) =>
+                  setLocalShots((prev) =>
+                    prev.map((row, rowIndex) =>
+                      rowIndex === index
+                        ? { ...row, efficiency_multiplier: Math.max(0.1, Number(event.target.value) || 1) }
+                        : row,
+                    ),
+                  )
+                }
+                disabled={!isAdmin}
+              />
+            </div>
+          ))}
+
+          <div className="rounded-md border border-border p-3 text-xs text-muted-foreground">
+            For a {template.duration_seconds}s film ({calcShotCount(template.duration_seconds)} shots):{' '}
+            {preview.map((row) => `${row.quantity} ${row.shot_type}`).join(', ')}
+          </div>
 
           {isAdmin && (
-            <div className="mt-3 flex items-center justify-between">
-              <Button size="sm" variant="ghost" onClick={handleAddShot}>
+            <div className="flex items-center justify-between">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  setLocalShots((prev) => [
+                    ...prev,
+                    {
+                      id: crypto.randomUUID(),
+                      template_id: template.id,
+                      shot_type: '',
+                      percentage: 0,
+                      efficiency_multiplier: 1,
+                      sort_order: prev.length,
+                    },
+                  ])
+                }
+              >
                 <Plus className="h-3 w-3" />
                 Add Shot
               </Button>
-              {dirty && (
-                <Button size="sm" onClick={handleSaveShots} disabled={updateTemplate.isPending}>
-                  {updateTemplate.isPending ? 'Saving...' : 'Save Shots'}
-                </Button>
-              )}
+              <Button size="sm" onClick={saveShots} disabled={updateTemplate.isPending}>
+                {updateTemplate.isPending ? 'Saving...' : 'Save Shots'}
+              </Button>
             </div>
           )}
         </CardContent>
@@ -435,64 +274,22 @@ function TemplateCard({ template, isAdmin, onEdit, onDelete }: TemplateCardProps
   );
 }
 
-// ── Loading Skeleton ─────────────────────────────────────────
-
-function TemplatesSkeleton() {
-  return (
-    <div className="mt-6 space-y-4">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="rounded-lg border border-border p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-4 w-4" />
-              <div className="space-y-2">
-                <Skeleton className="h-5 w-40" />
-                <Skeleton className="h-3 w-52" />
-              </div>
-            </div>
-            <Skeleton className="h-7 w-16 rounded-md" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Main Page ────────────────────────────────────────────────
-
 export function TemplatesPage() {
   const { access } = useAuth();
   const isAdmin = access?.is_admin ?? false;
   const { data: templates, isLoading, error } = useTemplates();
+  const deleteTemplate = useDeleteTemplate();
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<FilmTemplateWithShots | null>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingTemplate, setDeletingTemplate] = useState<FilmTemplateWithShots | null>(null);
-
-  function handleCreate() {
-    setEditingTemplate(null);
-    setDialogOpen(true);
-  }
-
-  function handleEdit(t: FilmTemplateWithShots) {
-    setEditingTemplate(t);
-    setDialogOpen(true);
-  }
-
-  function handleDelete(t: FilmTemplateWithShots) {
-    setDeletingTemplate(t);
-    setDeleteDialogOpen(true);
-  }
 
   return (
     <>
       <PageHeader
         title="Film Templates"
-        description="Pre-built shot breakdowns for common film durations"
+        description="Percentage-based shot mix definitions"
         actions={
           isAdmin ? (
-            <Button onClick={handleCreate}>
+            <Button onClick={() => setDialogOpen(true)}>
               <Plus className="h-4 w-4" />
               New Template
             </Button>
@@ -500,39 +297,26 @@ export function TemplatesPage() {
         }
       />
 
-      <div className="mt-6">
+      <div className="mt-6 space-y-4">
         {isLoading ? (
-          <TemplatesSkeleton />
+          Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-24 w-full" />)
         ) : error ? (
-          <div className="mt-8 text-sm text-destructive">
-            Failed to load templates. Please try again.
-          </div>
-        ) : !templates || templates.length === 0 ? (
-          <div className="mt-8 text-center text-sm text-muted-foreground">
-            No templates yet.{isAdmin ? ' Create your first film template.' : ''}
-          </div>
+          <p className="text-sm text-destructive">Failed to load templates.</p>
+        ) : templates && templates.length > 0 ? (
+          templates.map((template) => (
+            <TemplateCard
+              key={template.id}
+              template={template}
+              isAdmin={isAdmin}
+              onDelete={(templateId) => deleteTemplate.mutate(templateId)}
+            />
+          ))
         ) : (
-          <div className="space-y-4">
-            {templates.map((t) => (
-              <TemplateCard
-                key={t.id}
-                template={t}
-                isAdmin={isAdmin}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
+          <p className="text-sm text-muted-foreground">No templates found.</p>
         )}
       </div>
 
-      <TemplateDialog open={dialogOpen} onOpenChange={setDialogOpen} template={editingTemplate} />
-
-      <DeleteDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        template={deletingTemplate}
-      />
+      <TemplateDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </>
   );
 }

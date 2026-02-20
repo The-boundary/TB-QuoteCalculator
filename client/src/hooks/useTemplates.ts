@@ -27,7 +27,7 @@ export function useCreateTemplate() {
       rate_card_id?: string | null;
       shots?: Array<{
         shot_type: string;
-        quantity: number;
+        percentage: number;
         efficiency_multiplier: number;
         sort_order?: number;
       }>;
@@ -50,7 +50,7 @@ export function useUpdateTemplate() {
       rate_card_id?: string | null;
       shots?: Array<{
         shot_type: string;
-        quantity: number;
+        percentage: number;
         efficiency_multiplier: number;
         sort_order?: number;
       }>;

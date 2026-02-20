@@ -9,6 +9,12 @@ const LoginPage = lazy(() =>
 const QuotesListPage = lazy(() =>
   import('./pages/quotes/QuotesListPage').then((m) => ({ default: m.QuotesListPage })),
 );
+const ProjectsHomePage = lazy(() =>
+  import('./pages/projects/ProjectsHomePage').then((m) => ({ default: m.ProjectsHomePage })),
+);
+const ProjectDetailPage = lazy(() =>
+  import('./pages/projects/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })),
+);
 const QuoteDetailPage = lazy(() =>
   import('./pages/quotes/QuoteDetailPage').then((m) => ({ default: m.QuoteDetailPage })),
 );
@@ -49,9 +55,14 @@ export function App() {
         <Route path="/auth/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShellLayout />}>
-            <Route path="/" element={<QuotesListPage />} />
-            <Route path="/quotes/:id" element={<QuoteDetailPage />} />
-            <Route path="/quotes/:id/versions/:versionId/build" element={<QuoteBuilderPage />} />
+            <Route path="/" element={<ProjectsHomePage />} />
+            <Route path="/projects/:id" element={<ProjectDetailPage />} />
+            <Route path="/projects/:id/quotes/:quoteId" element={<QuoteDetailPage />} />
+            <Route
+              path="/projects/:id/quotes/:quoteId/versions/:versionId/build"
+              element={<QuoteBuilderPage />}
+            />
+            <Route path="/quotes" element={<QuotesListPage />} />
             <Route path="/rate-cards" element={<RateCardsPage />} />
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/settings" element={<SettingsPage />} />

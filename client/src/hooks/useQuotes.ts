@@ -1,19 +1,29 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type {
   Quote,
+  QuoteMode,
+  QuoteStatus,
   QuoteWithVersions,
   QuoteVersionWithShots,
-  QuoteStatus,
 } from '../../../shared/types';
 
 export interface QuoteListItem extends Quote {
+  project_name: string;
+  kantata_id: string | null;
+  is_forecasted: boolean;
+  development_id: string;
+  development_name: string;
+  development_client_name: string | null;
   latest_version: {
     id: string;
     version_number: number;
     duration_seconds: number;
-    pool_budget_hours: number;
+    shot_count: number;
+    pool_budget_hours: number | null;
+    pool_budget_amount: number | null;
     total_hours: number;
+    hourly_rate: number;
   } | null;
   version_count: number;
 }
@@ -36,20 +46,11 @@ export function useQuote(id: string | undefined) {
 export function useCreateQuote() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { client_name: string; project_name: string; rate_card_id: string }) =>
+    mutationFn: (body: { project_id: string; mode: QuoteMode; rate_card_id: string }) =>
       api.post<QuoteWithVersions>('/quotes', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['quotes'] }),
-  });
-}
-
-export function useUpdateQuote() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; client_name?: string; project_name?: string }) =>
-      api.put<Quote>(`/quotes/${id}`, body),
-    onSuccess: (_d, v) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['quotes'] });
-      qc.invalidateQueries({ queryKey: ['quotes', v.id] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 }
@@ -59,9 +60,10 @@ export function useUpdateQuoteStatus() {
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: QuoteStatus }) =>
       api.put<Quote>(`/quotes/${id}/status`, { status }),
-    onSuccess: (_d, v) => {
+    onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['quotes'] });
-      qc.invalidateQueries({ queryKey: ['quotes', v.id] });
+      qc.invalidateQueries({ queryKey: ['quotes', vars.id] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 }
@@ -70,31 +72,41 @@ export function useArchiveQuote() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete<Quote>(`/quotes/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['quotes'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['quotes'] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+    },
   });
+}
+
+export interface QuoteShotPayload {
+  shot_type: string;
+  percentage: number;
+  quantity: number;
+  base_hours_each: number;
+  efficiency_multiplier: number;
+  sort_order: number;
+}
+
+export interface QuoteVersionPayload {
+  mode?: QuoteMode;
+  duration_seconds: number;
+  hourly_rate?: number;
+  pool_budget_hours?: number | null;
+  pool_budget_amount?: number | null;
+  notes?: string;
+  shots: QuoteShotPayload[];
 }
 
 export function useCreateVersion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      quoteId,
-      ...body
-    }: {
-      quoteId: string;
-      duration_seconds: number;
-      notes?: string;
-      shots: Array<{
-        shot_type: string;
-        quantity: number;
-        base_hours_each: number;
-        efficiency_multiplier: number;
-        sort_order: number;
-      }>;
-    }) => api.post<QuoteVersionWithShots>(`/quotes/${quoteId}/versions`, body),
-    onSuccess: (_d, v) => {
+    mutationFn: ({ quoteId, ...body }: { quoteId: string } & QuoteVersionPayload) =>
+      api.post<QuoteVersionWithShots>(`/quotes/${quoteId}/versions`, body),
+    onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['quotes'] });
-      qc.invalidateQueries({ queryKey: ['quotes', v.quoteId] });
+      qc.invalidateQueries({ queryKey: ['quotes', vars.quoteId] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 }
@@ -109,19 +121,12 @@ export function useUpdateVersion() {
     }: {
       quoteId: string;
       versionId: string;
-      duration_seconds: number;
-      notes?: string;
-      shots: Array<{
-        shot_type: string;
-        quantity: number;
-        base_hours_each: number;
-        efficiency_multiplier: number;
-        sort_order: number;
-      }>;
-    }) => api.put<QuoteVersionWithShots>(`/quotes/${quoteId}/versions/${versionId}`, body),
-    onSuccess: (_d, v) => {
+    } & Partial<QuoteVersionPayload>) =>
+      api.put<QuoteVersionWithShots>(`/quotes/${quoteId}/versions/${versionId}`, body),
+    onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['quotes'] });
-      qc.invalidateQueries({ queryKey: ['quotes', v.quoteId] });
+      qc.invalidateQueries({ queryKey: ['quotes', vars.quoteId] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 }

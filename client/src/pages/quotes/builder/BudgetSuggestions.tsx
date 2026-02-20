@@ -3,7 +3,7 @@ import { Lightbulb } from 'lucide-react';
 import type { RateCardItem } from '../../../../../shared/types';
 
 interface BudgetSuggestionsProps {
-  remaining: number;
+  remaining: number | null;
   rateCardItems: RateCardItem[];
 }
 
@@ -15,7 +15,7 @@ interface Suggestion {
 
 export function BudgetSuggestions({ remaining, rateCardItems }: BudgetSuggestionsProps) {
   const suggestions = useMemo(() => {
-    if (remaining <= 0 || rateCardItems.length === 0) return [];
+    if (remaining === null || remaining <= 0 || rateCardItems.length === 0) return [];
 
     const results: Suggestion[] = [];
 

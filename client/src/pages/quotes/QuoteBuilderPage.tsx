@@ -1,155 +1,226 @@
-import { useState, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useCallback, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Save } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { ArrowLeft, Save } from 'lucide-react';
-import { useQuote, useUpdateVersion, useCreateVersion } from '@/hooks/useQuotes';
+import { Switch } from '@/components/ui/switch';
+import { useCreateVersion, useQuote, useUpdateVersion } from '@/hooks/useQuotes';
 import { useRateCard } from '@/hooks/useRateCards';
-import { useBuilderState } from './builder/useBuilderState';
-import { HourPoolBar } from './builder/HourPoolBar';
-import { ShotBreakdownTable } from './builder/ShotBreakdownTable';
 import { AddShotPicker } from './builder/AddShotPicker';
 import { ApplyTemplatePicker } from './builder/ApplyTemplatePicker';
-import { PostProductionSection } from './builder/PostProductionSection';
-import { TotalsSummary } from './builder/TotalsSummary';
 import { BudgetSuggestions } from './builder/BudgetSuggestions';
+import { HourPoolBar } from './builder/HourPoolBar';
+import { PostProductionSection } from './builder/PostProductionSection';
+import { ShotBreakdownTable } from './builder/ShotBreakdownTable';
+import { TotalsSummary } from './builder/TotalsSummary';
+import { useBuilderState } from './builder/useBuilderState';
 
-const DURATION_PRESETS = [15, 30, 60, 90, 120];
+const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
 
 export function QuoteBuilderPage() {
-  const { id, versionId } = useParams<{ id: string; versionId: string }>();
   const navigate = useNavigate();
+  const { id: projectId, quoteId, versionId } = useParams<{
+    id: string;
+    quoteId: string;
+    versionId: string;
+  }>();
 
-  const { data: quote, isLoading: quoteLoading } = useQuote(id);
-
+  const { data: quote, isLoading: quoteLoading } = useQuote(quoteId);
   const existingVersion = useMemo(
-    () => quote?.versions.find((v) => v.id === versionId),
-    [quote, versionId],
+    () => quote?.versions.find((version) => version.id === versionId),
+    [quote?.versions, versionId],
   );
-
   const { data: rateCard, isLoading: rateCardLoading } = useRateCard(quote?.rate_card_id);
 
-  const builder = useBuilderState(rateCard, existingVersion);
-
+  const builder = useBuilderState(rateCard, existingVersion, quote?.mode ?? 'retainer');
   const updateVersion = useUpdateVersion();
   const createVersion = useCreateVersion();
 
   const [addShotOpen, setAddShotOpen] = useState(false);
-  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const existingShotTypes = useMemo(() => builder.shots.map((s) => s.shot_type), [builder.shots]);
+  const existingShotTypes = useMemo(
+    () => builder.shots.map((shot) => shot.shot_type),
+    [builder.shots],
+  );
 
-  const handleSave = useCallback(async () => {
-    if (!id) return;
+  const saveVersion = useCallback(async () => {
+    if (!quoteId) return;
     setSaving(true);
     try {
       const payload = builder.getPayload();
       if (versionId) {
-        await updateVersion.mutateAsync({ quoteId: id, versionId, ...payload });
+        await updateVersion.mutateAsync({
+          quoteId,
+          versionId,
+          ...payload,
+        });
       } else {
-        await createVersion.mutateAsync({ quoteId: id, ...payload });
+        await createVersion.mutateAsync({
+          quoteId,
+          ...payload,
+        });
       }
     } finally {
       setSaving(false);
     }
-  }, [id, versionId, builder, updateVersion, createVersion]);
+  }, [builder, quoteId, versionId, updateVersion, createVersion]);
 
-  const handleSaveAndClose = useCallback(async () => {
-    await handleSave();
-    navigate(`/quotes/${id}`);
-  }, [handleSave, navigate, id]);
+  const saveAndClose = useCallback(async () => {
+    await saveVersion();
+    if (projectId && quoteId) {
+      navigate(`/projects/${projectId}/quotes/${quoteId}`);
+    }
+  }, [saveVersion, navigate, projectId, quoteId]);
 
   if (quoteLoading || rateCardLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-sm text-muted-foreground">Loading builder...</div>
-      </div>
-    );
+    return <p className="text-sm text-muted-foreground">Loading builder...</p>;
   }
 
-  if (!quote) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-sm text-muted-foreground">Quote not found.</div>
-      </div>
-    );
+  if (!quote || !projectId || !quoteId) {
+    return <p className="text-sm text-muted-foreground">Quote not found.</p>;
   }
 
   const versionNumber = existingVersion?.version_number ?? quote.versions.length + 1;
 
   return (
     <>
-      {/* Header */}
       <PageHeader
-        title={`${quote.project_name} — Version ${versionNumber}`}
-        description={quote.client_name}
+        title={`${quote.project?.name ?? 'Quote'} — Version ${versionNumber}`}
+        description={`${builder.shotCount} shots for ${builder.duration}s`}
         actions={
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/quotes/${id}`)}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
+          <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${projectId}/quotes/${quoteId}`)}>
+            <ArrowLeft className="mr-1 h-4 w-4" />
             Back
           </Button>
         }
       />
 
-      <div className="mt-8 space-y-6">
-        {/* Duration Section */}
+      <div className="mt-6 space-y-6">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Film Duration</CardTitle>
+            <CardTitle className="text-base">Mode and Pricing</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {DURATION_PRESETS.map((d) => (
-                <Button
-                  key={d}
-                  variant={builder.duration === d ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => builder.setDuration(d)}
-                >
-                  {d}s
-                </Button>
-              ))}
-              <div className="ml-2 border-l border-border pl-2">
-                <ApplyTemplatePicker
-                  onApply={builder.applyTemplate}
-                  open={templatePickerOpen}
-                  onOpenChange={setTemplatePickerOpen}
+            <div className="flex flex-wrap items-center gap-6">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="mode-toggle">Mode</Label>
+                <Switch
+                  id="mode-toggle"
+                  checked={builder.mode === 'budget'}
+                  onCheckedChange={(checked) => builder.setMode(checked ? 'budget' : 'retainer')}
+                />
+                <span className="text-sm font-medium">
+                  {builder.mode === 'budget' ? 'Budget' : 'Retainer'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Label htmlFor="pricing-toggle">Show Pricing</Label>
+                <Switch
+                  id="pricing-toggle"
+                  checked={builder.showPricing}
+                  onCheckedChange={builder.setShowPricing}
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Label htmlFor="hourly-rate">Hourly Rate</Label>
+                <Input
+                  id="hourly-rate"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={builder.hourlyRate}
+                  onChange={(event) => builder.setHourlyRate(Number(event.target.value) || 0)}
+                  className="w-28"
                 />
               </div>
             </div>
+
+            {builder.mode === 'budget' && (
+              <div className="flex items-center gap-2">
+                <Label htmlFor="budget-amount">Budget ($)</Label>
+                <Input
+                  id="budget-amount"
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={builder.budgetAmount ?? ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    builder.setBudgetAmount(value === '' ? null : Number(value));
+                  }}
+                  className="w-40"
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Duration</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {DURATION_PRESETS.map((seconds) => (
+                <Button
+                  key={seconds}
+                  size="sm"
+                  variant={builder.duration === seconds ? 'default' : 'outline'}
+                  onClick={() => builder.setDuration(seconds)}
+                >
+                  {seconds}s
+                </Button>
+              ))}
+
+              <div className="ml-2 border-l border-border pl-2">
+                <ApplyTemplatePicker
+                  onApply={builder.applyTemplate}
+                  open={templateOpen}
+                  onOpenChange={setTemplateOpen}
+                />
+              </div>
+            </div>
+
             <div className="flex items-center gap-3">
-              <Label
-                htmlFor="duration-input"
-                className="text-sm text-muted-foreground whitespace-nowrap"
-              >
-                Custom (seconds):
-              </Label>
+              <Label htmlFor="duration-input">Custom (seconds)</Label>
               <Input
                 id="duration-input"
                 type="number"
                 min={1}
                 max={600}
                 value={builder.duration}
-                onChange={(e) => builder.setDuration(Math.max(1, parseInt(e.target.value) || 1))}
+                onChange={(event) => builder.setDuration(Math.max(1, Number(event.target.value) || 1))}
                 className="w-28"
               />
+              <span className="text-sm text-muted-foreground">{builder.shotCount} total shots</span>
             </div>
           </CardContent>
         </Card>
 
-        {/* Hour Pool Bar */}
-        <HourPoolBar used={builder.totalHours} budget={builder.poolBudgetHours} />
+        {builder.mode === 'budget' && (
+          <HourPoolBar
+            used={builder.totalHours}
+            budget={builder.poolBudgetHours}
+            showPricing={builder.showPricing}
+            hourlyRate={builder.hourlyRate}
+          />
+        )}
 
-        {/* Shot Breakdown */}
         <ShotBreakdownTable
           shots={builder.shots}
+          showPricing={builder.showPricing}
+          hourlyRate={builder.hourlyRate}
           onToggleSelect={builder.toggleShotSelection}
           onSelectAll={builder.selectAll}
           onDeselectAll={builder.deselectAll}
+          onPercentageChange={builder.setPercentage}
           onUpdateQuantity={builder.updateQuantity}
           onUpdateEfficiency={builder.updateEfficiency}
           onRemove={builder.removeShot}
@@ -158,35 +229,33 @@ export function QuoteBuilderPage() {
             <AddShotPicker
               rateCardItems={rateCard?.items ?? []}
               existingShotTypes={existingShotTypes}
-              onAdd={(shotType, baseHours) => {
-                builder.addShot(shotType, baseHours);
-              }}
+              onAdd={(shotType, baseHours) => builder.addShot(shotType, baseHours)}
               open={addShotOpen}
               onOpenChange={setAddShotOpen}
             />
           }
         />
 
-        {/* Post-Production */}
         <PostProductionSection
           duration={builder.duration}
           editingHours={builder.editingHours}
           editingHoursPer30s={builder.editingHoursPer30s}
         />
 
-        {/* Totals */}
         <TotalsSummary
           totalShotHours={builder.totalShotHours}
           editingHours={builder.editingHours}
           totalHours={builder.totalHours}
           poolBudgetHours={builder.poolBudgetHours}
           remaining={builder.remaining}
+          showPricing={builder.showPricing}
+          hourlyRate={builder.hourlyRate}
         />
 
-        {/* Budget Suggestions */}
-        <BudgetSuggestions remaining={builder.remaining} rateCardItems={rateCard?.items ?? []} />
+        {builder.mode === 'budget' && (
+          <BudgetSuggestions remaining={builder.remaining} rateCardItems={rateCard?.items ?? []} />
+        )}
 
-        {/* Notes */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Notes</CardTitle>
@@ -194,25 +263,24 @@ export function QuoteBuilderPage() {
           <CardContent>
             <textarea
               value={builder.notes}
-              onChange={(e) => builder.setNotes(e.target.value)}
-              placeholder="Add any notes about this version..."
+              onChange={(event) => builder.setNotes(event.target.value)}
+              placeholder="Add notes for this version..."
               rows={3}
-              className="flex w-full rounded-md px-3 py-2 text-sm bg-[rgba(250,250,250,0.027)] border border-sb-border-stronger text-sb-text placeholder:text-sb-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sb-brand focus-visible:ring-offset-2 focus-visible:ring-offset-sb-bg focus-visible:border-transparent resize-none"
+              className="flex w-full resize-none rounded-md border border-sb-border-stronger bg-[rgba(250,250,250,0.027)] px-3 py-2 text-sm text-sb-text placeholder:text-sb-text-muted"
             />
           </CardContent>
         </Card>
 
-        {/* Action Buttons */}
         <div className="flex items-center justify-end gap-3 pb-8">
-          <Button variant="outline" onClick={() => navigate(`/quotes/${id}`)}>
+          <Button variant="outline" onClick={() => navigate(`/projects/${projectId}/quotes/${quoteId}`)}>
             Cancel
           </Button>
-          <Button variant="secondary" onClick={handleSave} disabled={saving}>
-            <Save className="h-4 w-4 mr-1" />
+          <Button variant="secondary" onClick={saveVersion} disabled={saving}>
+            <Save className="mr-1 h-4 w-4" />
             {saving ? 'Saving...' : 'Save'}
           </Button>
-          <Button onClick={handleSaveAndClose} disabled={saving}>
-            <Save className="h-4 w-4 mr-1" />
+          <Button onClick={saveAndClose} disabled={saving}>
+            <Save className="mr-1 h-4 w-4" />
             {saving ? 'Saving...' : 'Save & Close'}
           </Button>
         </div>

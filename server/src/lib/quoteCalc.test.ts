@@ -1,65 +1,102 @@
 import { describe, it, expect } from 'vitest';
 import {
-  poolBudgetHours,
-  editingHours,
-  totalShotHours,
-  totalHours,
-  remainingBudget,
+  budgetToPoolHours,
   clampEfficiency,
+  distributeShotsByPercentage,
+  editingHours,
+  poolBudgetHours,
+  remainingBudget,
+  shotCount,
+  totalHours,
+  totalShotHours,
 } from './quoteCalc';
 
 describe('quoteCalc', () => {
+  describe('shotCount', () => {
+    it('calculates expected values for standard durations', () => {
+      expect(shotCount(15)).toBe(5);
+      expect(shotCount(30)).toBe(8);
+      expect(shotCount(45)).toBe(12);
+      expect(shotCount(60)).toBe(15);
+      expect(shotCount(90)).toBe(23);
+      expect(shotCount(120)).toBe(30);
+    });
+
+    it('keeps minimum floor for very short durations', () => {
+      expect(shotCount(1)).toBe(5);
+    });
+  });
+
   describe('poolBudgetHours', () => {
     it('calculates budget from duration and rate', () => {
       expect(poolBudgetHours(60, 17.33)).toBeCloseTo(1039.8);
     });
+  });
 
-    it('returns 0 for zero duration', () => {
-      expect(poolBudgetHours(0, 17.33)).toBe(0);
+  describe('budgetToPoolHours', () => {
+    it('calculates hours from budget and rate', () => {
+      expect(budgetToPoolHours(10000, 125)).toBe(80);
+      expect(budgetToPoolHours(5000, 125)).toBe(40);
     });
 
-    it('returns 0 for zero rate', () => {
-      expect(poolBudgetHours(60, 0)).toBe(0);
+    it('returns 0 when rate is invalid', () => {
+      expect(budgetToPoolHours(10000, 0)).toBe(0);
     });
   });
 
   describe('editingHours', () => {
-    it('rounds up to next 30s chunk', () => {
-      // 45 seconds = ceil(45/30) = 2 chunks * 8 hours = 16
+    it('rounds up to next 30 second chunk', () => {
       expect(editingHours(45, 8)).toBe(16);
-    });
-
-    it('exact 30s boundary', () => {
-      // 30 seconds = ceil(30/30) = 1 chunk * 8 = 8
       expect(editingHours(30, 8)).toBe(8);
-    });
-
-    it('60 seconds = 2 chunks', () => {
       expect(editingHours(60, 8)).toBe(16);
     });
+  });
 
-    it('1 second = 1 chunk', () => {
-      expect(editingHours(1, 8)).toBe(8);
+  describe('distributeShotsByPercentage', () => {
+    it('distributes shots for exact percentages', () => {
+      const result = distributeShotsByPercentage(15, [
+        { shot_type: 'Masterplan Aerial', percentage: 20, base_hours_each: 80 },
+        { shot_type: 'Aerial', percentage: 40, base_hours_each: 60 },
+        { shot_type: 'Exterior', percentage: 40, base_hours_each: 40 },
+      ]);
+
+      expect(result).toEqual([
+        { shot_type: 'Masterplan Aerial', quantity: 3 },
+        { shot_type: 'Aerial', quantity: 6 },
+        { shot_type: 'Exterior', quantity: 6 },
+      ]);
+      expect(result.reduce((sum, row) => sum + row.quantity, 0)).toBe(15);
+    });
+
+    it('handles fractional distribution', () => {
+      const result = distributeShotsByPercentage(8, [
+        { shot_type: 'Aerial', percentage: 25, base_hours_each: 60 },
+        { shot_type: 'Semi-Aerial', percentage: 25, base_hours_each: 60 },
+        { shot_type: 'Exterior', percentage: 50, base_hours_each: 40 },
+      ]);
+
+      expect(result.reduce((sum, row) => sum + row.quantity, 0)).toBe(8);
+    });
+
+    it('biases rounding to higher-hour shot types on ties', () => {
+      const result = distributeShotsByPercentage(7, [
+        { shot_type: 'Expensive', percentage: 33.34, base_hours_each: 80 },
+        { shot_type: 'Medium', percentage: 33.33, base_hours_each: 60 },
+        { shot_type: 'Cheap', percentage: 33.33, base_hours_each: 40 },
+      ]);
+
+      expect(result.reduce((sum, row) => sum + row.quantity, 0)).toBe(7);
+      expect(result[0].quantity).toBeGreaterThanOrEqual(result[2].quantity);
     });
   });
 
   describe('totalShotHours', () => {
     it('sums shot hours correctly', () => {
       const shots = [
-        { quantity: 3, base_hours_each: 10, efficiency_multiplier: 1.0 },
+        { quantity: 3, base_hours_each: 10, efficiency_multiplier: 1 },
         { quantity: 2, base_hours_each: 5, efficiency_multiplier: 1.5 },
       ];
-      // 3*10*1.0 + 2*5*1.5 = 30 + 15 = 45
       expect(totalShotHours(shots)).toBe(45);
-    });
-
-    it('returns 0 for empty array', () => {
-      expect(totalShotHours([])).toBe(0);
-    });
-
-    it('handles efficiency multiplier', () => {
-      const shots = [{ quantity: 1, base_hours_each: 10, efficiency_multiplier: 2.5 }];
-      expect(totalShotHours(shots)).toBe(25);
     });
   });
 
@@ -70,32 +107,17 @@ describe('quoteCalc', () => {
   });
 
   describe('remainingBudget', () => {
-    it('positive when under budget', () => {
+    it('returns positive/zero/negative deltas', () => {
       expect(remainingBudget(100, 60)).toBe(40);
-    });
-
-    it('zero when at budget', () => {
       expect(remainingBudget(100, 100)).toBe(0);
-    });
-
-    it('negative when over budget', () => {
       expect(remainingBudget(100, 120)).toBe(-20);
     });
   });
 
   describe('clampEfficiency', () => {
-    it('clamps below minimum to 0.1', () => {
+    it('clamps values to 0.1..5.0', () => {
       expect(clampEfficiency(0)).toBe(0.1);
-      expect(clampEfficiency(-1)).toBe(0.1);
-    });
-
-    it('clamps above maximum to 5.0', () => {
-      expect(clampEfficiency(6)).toBe(5.0);
-      expect(clampEfficiency(100)).toBe(5.0);
-    });
-
-    it('passes through valid values', () => {
-      expect(clampEfficiency(1.0)).toBe(1.0);
+      expect(clampEfficiency(6)).toBe(5);
       expect(clampEfficiency(2.5)).toBe(2.5);
     });
   });

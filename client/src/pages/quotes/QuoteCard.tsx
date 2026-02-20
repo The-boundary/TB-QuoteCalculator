@@ -13,9 +13,9 @@ const STATUS_CONFIG: Record<
   { label: string; variant: 'secondary' | 'warning' | 'success' | 'info' | 'outline' }
 > = {
   draft: { label: 'Draft', variant: 'secondary' },
-  pending_approval: { label: 'Pending Approval', variant: 'warning' },
-  approved: { label: 'Approved', variant: 'success' },
-  sent: { label: 'Sent', variant: 'info' },
+  negotiating: { label: 'Negotiating', variant: 'warning' },
+  awaiting_approval: { label: 'Awaiting Approval', variant: 'info' },
+  confirmed: { label: 'Confirmed', variant: 'success' },
   archived: { label: 'Archived', variant: 'outline' },
 };
 
@@ -60,13 +60,15 @@ export function QuoteCard({ quote }: QuoteCardProps) {
   return (
     <Card
       className="group cursor-pointer transition-colors hover:border-sb-border-muted"
-      onClick={() => navigate(`/quotes/${quote.id}`)}
+      onClick={() => navigate(`/projects/${quote.project_id}/quotes/${quote.id}`)}
     >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h3 className="font-semibold text-sm truncate">{quote.client_name}</h3>
-            <p className="text-sm text-muted-foreground truncate mt-0.5">{quote.project_name}</p>
+            <h3 className="font-semibold text-sm truncate">{quote.project_name}</h3>
+            <p className="text-sm text-muted-foreground truncate mt-0.5">
+              {quote.development_name}
+            </p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>

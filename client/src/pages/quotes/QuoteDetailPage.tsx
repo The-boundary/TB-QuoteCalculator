@@ -1,9 +1,10 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ChevronDown, Plus } from 'lucide-react';
+import { format } from 'date-fns';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,129 +12,142 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useQuote, useUpdateQuoteStatus, useCreateVersion } from '@/hooks/useQuotes';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useCreateVersion, useQuote, useUpdateQuoteStatus } from '@/hooks/useQuotes';
 import { VersionCard } from './VersionCard';
 import type { QuoteStatus } from '../../../../shared/types';
 
-const STATUS_CONFIG: Record<
-  QuoteStatus,
-  {
-    label: string;
-    variant: 'default' | 'secondary' | 'warning' | 'success' | 'info' | 'destructive';
-  }
-> = {
+type StatusConfig = {
+  label: string;
+  variant: 'default' | 'secondary' | 'warning' | 'success' | 'info' | 'destructive';
+};
+
+const STATUS_CONFIG: Record<QuoteStatus, StatusConfig> = {
   draft: { label: 'Draft', variant: 'secondary' },
-  pending_approval: { label: 'Pending Approval', variant: 'warning' },
-  approved: { label: 'Approved', variant: 'success' },
-  sent: { label: 'Sent', variant: 'info' },
+  negotiating: { label: 'Negotiating', variant: 'warning' },
+  awaiting_approval: { label: 'Awaiting Approval', variant: 'info' },
+  confirmed: { label: 'Confirmed', variant: 'success' },
   archived: { label: 'Archived', variant: 'destructive' },
 };
 
-interface StatusTransition {
+interface Transition {
   target: QuoteStatus;
   label: string;
 }
 
-function getStatusTransitions(current: QuoteStatus): StatusTransition[] {
-  const transitions: StatusTransition[] = [];
+function getTransitions(current: QuoteStatus): Transition[] {
+  if (current === 'archived') return [];
 
-  switch (current) {
-    case 'draft':
-      transitions.push({ target: 'pending_approval', label: 'Submit for Approval' });
-      break;
-    case 'pending_approval':
-      transitions.push({ target: 'approved', label: 'Approve' });
-      transitions.push({ target: 'draft', label: 'Reject / Return to Draft' });
-      break;
-    case 'approved':
-      transitions.push({ target: 'sent', label: 'Mark as Sent' });
-      break;
+  const transitions: Transition[] = [];
+  if (current === 'draft') transitions.push({ target: 'negotiating', label: 'Start Negotiation' });
+  if (current === 'negotiating') {
+    transitions.push({ target: 'awaiting_approval', label: 'Send for Approval' });
+    transitions.push({ target: 'draft', label: 'Return to Draft' });
   }
-
-  if (current !== 'archived') {
-    transitions.push({ target: 'archived', label: 'Archive' });
+  if (current === 'awaiting_approval') {
+    transitions.push({ target: 'confirmed', label: 'Mark Confirmed' });
+    transitions.push({ target: 'draft', label: 'Return to Draft' });
   }
-
+  if (current === 'confirmed') transitions.push({ target: 'draft', label: 'Reopen as Draft' });
+  transitions.push({ target: 'archived', label: 'Archive' });
   return transitions;
 }
 
 export function QuoteDetailPage() {
-  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: quote, isLoading } = useQuote(id);
+  const { id: projectId, quoteId } = useParams<{ id: string; quoteId: string }>();
+  const { data: quote, isLoading } = useQuote(quoteId);
   const updateStatus = useUpdateQuoteStatus();
   const createVersion = useCreateVersion();
 
-  async function handleStatusChange(status: QuoteStatus) {
-    if (!id) return;
-    await updateStatus.mutateAsync({ id, status });
+  async function onStatusChange(status: QuoteStatus) {
+    if (!quoteId) return;
+    await updateStatus.mutateAsync({ id: quoteId, status });
   }
 
-  async function handleNewVersion() {
-    if (!id || !quote || quote.versions.length === 0) return;
+  async function onNewVersion() {
+    if (!quote || !quoteId || !projectId || quote.versions.length === 0) return;
 
-    const sorted = [...quote.versions].sort((a, b) => b.version_number - a.version_number);
-    const latest = sorted[0];
-
+    const latest = [...quote.versions].sort((a, b) => b.version_number - a.version_number)[0];
     const newVersion = await createVersion.mutateAsync({
-      quoteId: id,
+      quoteId,
       duration_seconds: latest.duration_seconds,
-      notes: null as unknown as undefined,
-      shots: latest.shots.map((s) => ({
-        shot_type: s.shot_type,
-        quantity: s.quantity,
-        base_hours_each: s.base_hours_each,
-        efficiency_multiplier: s.efficiency_multiplier,
-        sort_order: s.sort_order,
+      hourly_rate: latest.hourly_rate,
+      pool_budget_hours: latest.pool_budget_hours,
+      pool_budget_amount: latest.pool_budget_amount,
+      shots: latest.shots.map((shot) => ({
+        shot_type: shot.shot_type,
+        percentage: shot.percentage,
+        quantity: shot.quantity,
+        base_hours_each: shot.base_hours_each,
+        efficiency_multiplier: shot.efficiency_multiplier,
+        sort_order: shot.sort_order,
       })),
     });
 
-    navigate(`/quotes/${id}/versions/${newVersion.id}/build`);
+    navigate(`/projects/${projectId}/quotes/${quoteId}/versions/${newVersion.id}/build`);
   }
+
+  const sortedVersions = useMemo(
+    () => [...(quote?.versions ?? [])].sort((a, b) => b.version_number - a.version_number),
+    [quote?.versions],
+  );
 
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-72" />
-            <Skeleton className="h-4 w-48" />
-          </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-[38px] w-24" />
-            <Skeleton className="h-[38px] w-36" />
-          </div>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((n) => (
-            <Skeleton key={n} className="h-40 rounded-lg" />
-          ))}
-        </div>
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-24 w-full" />
       </div>
     );
   }
 
-  if (!quote) {
-    return <div className="text-sm text-muted-foreground">Quote not found.</div>;
+  if (!quote || !projectId || !quoteId) {
+    return <p className="text-sm text-muted-foreground">Quote not found.</p>;
   }
 
-  const statusConfig = STATUS_CONFIG[quote.status];
-  const transitions = getStatusTransitions(quote.status);
-  const sortedVersions = [...quote.versions].sort((a, b) => b.version_number - a.version_number);
+  const currentStatus = STATUS_CONFIG[quote.status];
+  const transitions = getTransitions(quote.status);
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate('/')}>
+      <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate(`/projects/${projectId}`)}>
         <ArrowLeft className="h-4 w-4" />
-        Back to Quotes
+        Back to Project
       </Button>
 
       <PageHeader
-        title={`${quote.client_name} \u2014 ${quote.project_name}`}
+        title={`${quote.project?.name ?? 'Quote'} — ${quote.mode}`}
         description={quote.rate_card ? `Rate card: ${quote.rate_card.name}` : undefined}
         actions={
           <>
-            <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button type="button">
+                  <Badge variant={currentStatus.variant}>{currentStatus.label}</Badge>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <div className="text-sm font-medium">Status History</div>
+                <div className="mt-2 space-y-2">
+                  {(quote.status_log ?? []).map((entry) => (
+                    <div key={entry.id} className="border-b border-border pb-2 last:border-0 last:pb-0">
+                        <div className="text-sm font-medium capitalize">
+                        {entry.new_status.replace(/_/g, ' ')}
+                        </div>
+                      <div className="text-xs text-muted-foreground">
+                        by {entry.changed_by_email ?? 'Unknown'} ·{' '}
+                        {format(new Date(entry.changed_at), 'dd MMM yyyy HH:mm')}
+                      </div>
+                    </div>
+                  ))}
+                  {(quote.status_log ?? []).length === 0 && (
+                    <p className="text-sm text-muted-foreground">No history entries yet.</p>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
 
             {transitions.length > 0 && (
               <DropdownMenu>
@@ -144,25 +158,23 @@ export function QuoteDetailPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  {transitions.map((t, i) => (
-                    <span key={t.target}>
-                      {t.target === 'archived' && i > 0 && <DropdownMenuSeparator />}
+                  {transitions.map((transition, index) => (
+                    <div key={transition.target}>
+                      {transition.target === 'archived' && index > 0 && <DropdownMenuSeparator />}
                       <DropdownMenuItem
-                        onClick={() => handleStatusChange(t.target)}
-                        className={
-                          t.target === 'archived' ? 'text-red-400 focus:text-red-300' : undefined
-                        }
+                        onClick={() => onStatusChange(transition.target)}
+                        className={transition.target === 'archived' ? 'text-red-400 focus:text-red-300' : undefined}
                       >
-                        {t.label}
+                        {transition.label}
                       </DropdownMenuItem>
-                    </span>
+                    </div>
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
 
-            {quote.versions.length > 0 && (
-              <Button size="sm" onClick={handleNewVersion} disabled={createVersion.isPending}>
+            {sortedVersions.length > 0 && (
+              <Button size="sm" onClick={onNewVersion} disabled={createVersion.isPending}>
                 <Plus className="h-4 w-4" />
                 New Version
               </Button>
@@ -172,13 +184,11 @@ export function QuoteDetailPage() {
       />
 
       {sortedVersions.length === 0 ? (
-        <div className="mt-8 text-sm text-muted-foreground">
-          No versions yet. Create a version to start building this quote.
-        </div>
+        <p className="text-sm text-muted-foreground">No versions yet.</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sortedVersions.map((version) => (
-            <VersionCard key={version.id} version={version} quoteId={quote.id} />
+            <VersionCard key={version.id} version={version} quoteId={quote.id} projectId={projectId} />
           ))}
         </div>
       )}

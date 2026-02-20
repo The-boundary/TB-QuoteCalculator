@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { FileText, Calculator, Film, Settings, LogOut } from 'lucide-react';
+import { FolderOpen, FileText, Calculator, Film, Settings, LogOut } from 'lucide-react';
 import {
   MissionControlSidebar,
   SidebarMobileMenuButton,
@@ -14,7 +14,18 @@ const sections: SidebarSection[] = [
   {
     key: 'main',
     items: [
-      { key: 'quotes', label: 'Quotes', href: '/', icon: <FileText className="h-4 w-4" /> },
+      {
+        key: 'projects',
+        label: 'Projects',
+        href: '/',
+        icon: <FolderOpen className="h-4 w-4" />,
+      },
+      {
+        key: 'quotes-legacy',
+        label: 'Quotes (Legacy)',
+        href: '/quotes',
+        icon: <FileText className="h-4 w-4" />,
+      },
       {
         key: 'rate-cards',
         label: 'Rate Cards',

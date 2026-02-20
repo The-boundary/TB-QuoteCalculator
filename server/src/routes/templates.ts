@@ -91,10 +91,10 @@ router.post('/', async (req: Request, res: Response) => {
         for (let idx = 0; idx < shots.length; idx++) {
           const s = shots[idx];
           const { rows } = await client.query(
-            `INSERT INTO film_template_shots (template_id, shot_type, quantity, efficiency_multiplier, sort_order)
+            `INSERT INTO film_template_shots (template_id, shot_type, percentage, efficiency_multiplier, sort_order)
              VALUES ($1, $2, $3, $4, $5)
              RETURNING *`,
-            [template.id, s.shot_type, s.quantity, s.efficiency_multiplier, s.sort_order ?? idx],
+            [template.id, s.shot_type, s.percentage, s.efficiency_multiplier, s.sort_order ?? idx],
           );
           createdShots.push(rows[0]);
         }
@@ -169,10 +169,10 @@ router.put('/:id', async (req: Request, res: Response) => {
           for (let idx = 0; idx < shots.length; idx++) {
             const s = shots[idx];
             const { rows } = await client.query(
-              `INSERT INTO film_template_shots (template_id, shot_type, quantity, efficiency_multiplier, sort_order)
+              `INSERT INTO film_template_shots (template_id, shot_type, percentage, efficiency_multiplier, sort_order)
                VALUES ($1, $2, $3, $4, $5)
                RETURNING *`,
-              [req.params.id, s.shot_type, s.quantity, s.efficiency_multiplier, s.sort_order ?? idx],
+              [req.params.id, s.shot_type, s.percentage, s.efficiency_multiplier, s.sort_order ?? idx],
             );
             updatedShots.push(rows[0]);
           }

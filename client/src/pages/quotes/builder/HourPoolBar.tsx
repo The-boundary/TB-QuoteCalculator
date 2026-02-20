@@ -2,27 +2,44 @@ import { cn } from '@/lib/utils';
 
 interface HourPoolBarProps {
   used: number;
-  budget: number;
+  budget: number | null;
+  showPricing?: boolean;
+  hourlyRate?: number;
 }
 
-export function HourPoolBar({ used, budget }: HourPoolBarProps) {
-  const percentage = budget > 0 ? (used / budget) * 100 : 0;
+export function HourPoolBar({
+  used,
+  budget,
+  showPricing = false,
+  hourlyRate = 0,
+}: HourPoolBarProps) {
+  if (budget === null || budget <= 0) {
+    return null;
+  }
+
+  const percentage = (used / budget) * 100;
   const clampedWidth = Math.min(100, percentage);
   const remaining = budget - used;
   const isOver = remaining < 0;
 
-  const barColor =
-    percentage > 100 ? 'bg-red-500' : percentage >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
-
+  const barColor = percentage > 100 ? 'bg-red-500' : percentage >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
   const textColor = isOver ? 'text-red-400' : 'text-emerald-400';
+
+  const usedCost = used * hourlyRate;
+  const budgetCost = budget * hourlyRate;
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">
           Hour Pool:{' '}
-          <span className="text-foreground font-medium">
+          <span className="font-medium text-foreground">
             {used.toFixed(1)} / {budget.toFixed(1)} hrs
+            {showPricing && (
+              <span className="ml-1 text-xs text-muted-foreground">
+                (${usedCost.toFixed(0)} / ${budgetCost.toFixed(0)})
+              </span>
+            )}
           </span>
         </span>
         <span className={cn('font-medium', textColor)}>

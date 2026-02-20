@@ -58,7 +58,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     const parsed = validate(createRateCardSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
-    const { name, hours_per_second, editing_hours_per_30s, is_default } = parsed.data;
+    const { name, hours_per_second, editing_hours_per_30s, hourly_rate, is_default } = parsed.data;
 
     // If setting as default, unset other defaults
     if (is_default) {
@@ -66,10 +66,17 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const { rows } = await dbQuery(
-      `INSERT INTO rate_cards (name, hours_per_second, editing_hours_per_30s, is_default, created_by)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO rate_cards (name, hours_per_second, editing_hours_per_30s, hourly_rate, is_default, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [name, hours_per_second, editing_hours_per_30s || 100, is_default || false, req.user.id],
+      [
+        name,
+        hours_per_second,
+        editing_hours_per_30s ?? 100,
+        hourly_rate ?? 125,
+        is_default ?? false,
+        req.user.id,
+      ],
     );
 
     res.status(201).json(rows[0]);
@@ -89,7 +96,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     const parsed = validate(updateRateCardSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
-    const { name, hours_per_second, editing_hours_per_30s, is_default } = parsed.data;
+    const { name, hours_per_second, editing_hours_per_30s, hourly_rate, is_default } = parsed.data;
 
     if (is_default) {
       await dbQuery(`UPDATE rate_cards SET is_default = false WHERE is_default = true`);
@@ -97,10 +104,15 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     const { rows } = await dbQuery(
       `UPDATE rate_cards
-       SET name = $1, hours_per_second = $2, editing_hours_per_30s = $3, is_default = $4, updated_at = NOW()
-       WHERE id = $5
+       SET name = COALESCE($1, name),
+           hours_per_second = COALESCE($2, hours_per_second),
+           editing_hours_per_30s = COALESCE($3, editing_hours_per_30s),
+           hourly_rate = COALESCE($4, hourly_rate),
+           is_default = COALESCE($5, is_default),
+           updated_at = NOW()
+       WHERE id = $6
        RETURNING *`,
-      [name, hours_per_second, editing_hours_per_30s, is_default, req.params.id],
+      [name, hours_per_second, editing_hours_per_30s, hourly_rate, is_default, req.params.id],
     );
 
     if (rows.length === 0) return sendNotFound(res, 'Rate card');
@@ -151,7 +163,7 @@ router.put('/:id/items/:itemId', async (req: Request, res: Response) => {
 
     const { rows } = await dbQuery(
       `UPDATE rate_card_items
-       SET shot_type = $1, category = $2, hours = $3, sort_order = $4
+       SET shot_type = $1, category = $2, hours = $3, sort_order = COALESCE($4, sort_order)
        WHERE id = $5 AND rate_card_id = $6
        RETURNING *`,
       [shot_type, category, hours, sort_order, req.params.itemId, req.params.id],
