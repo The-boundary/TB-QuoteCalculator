@@ -11,7 +11,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     <MissionControlAppShell
       sidebar={<Sidebar />}
       collapsed={sidebarCollapsed}
-      contentClassName={cn('mx-auto w-full p-4 sm:p-6 lg:p-8', wideMode ? 'max-w-full' : 'max-w-7xl')}
+      contentClassName={cn(
+        'mx-auto w-full p-4 sm:p-6 lg:p-8',
+        wideMode ? 'max-w-full' : 'max-w-7xl',
+      )}
     >
       {children}
     </MissionControlAppShell>

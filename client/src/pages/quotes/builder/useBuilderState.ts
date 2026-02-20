@@ -117,8 +117,8 @@ function distributeShotsByPercentage(totalShots: number, shots: BuilderShot[]): 
 
   return shots.map((shot) => {
     const quantity = shot.manualOverride
-      ? manualAssignments.get(shot.sort_order) ?? 0
-      : rowBySortOrder.get(shot.sort_order) ?? 0;
+      ? (manualAssignments.get(shot.sort_order) ?? 0)
+      : (rowBySortOrder.get(shot.sort_order) ?? 0);
     const adjusted_hours = quantity * shot.base_hours_each * shot.efficiency_multiplier;
     return { ...shot, quantity, adjusted_hours };
   });

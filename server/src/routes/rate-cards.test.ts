@@ -61,11 +61,9 @@ describe('rate-cards routes', () => {
   });
 
   it('POST /api/rate-cards creates card with hourly_rate', async () => {
-    mockDbQuery
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({
-        rows: [{ id: 'rc1', name: 'New Card', hours_per_second: 10, hourly_rate: 150 }],
-      });
+    mockDbQuery.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({
+      rows: [{ id: 'rc1', name: 'New Card', hours_per_second: 10, hourly_rate: 150 }],
+    });
 
     const res = await request(app).post('/api/rate-cards').send({
       name: 'New Card',
@@ -82,11 +80,9 @@ describe('rate-cards routes', () => {
     process.env.NODE_ENV = 'development';
     process.env.DEV_AUTH_BYPASS = 'true';
 
-    mockDbQuery
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({
-        rows: [{ id: 'rc1', name: 'Bypass Card', hours_per_second: 10, hourly_rate: 125 }],
-      });
+    mockDbQuery.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({
+      rows: [{ id: 'rc1', name: 'Bypass Card', hours_per_second: 10, hourly_rate: 125 }],
+    });
 
     const res = await request(app).post('/api/rate-cards').send({
       name: 'Bypass Card',

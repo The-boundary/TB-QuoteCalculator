@@ -100,7 +100,12 @@ export function QuoteDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate(`/projects/${projectId}`)}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="gap-1.5"
+        onClick={() => navigate(`/projects/${projectId}`)}
+      >
         <ArrowLeft className="h-4 w-4" />
         Back to Project
       </Button>
@@ -120,7 +125,10 @@ export function QuoteDetailPage() {
                 <div className="text-sm font-medium">Status History</div>
                 <div className="mt-2 space-y-2">
                   {(quote.status_log ?? []).map((entry) => (
-                    <div key={entry.id} className="border-b border-border pb-2 last:border-0 last:pb-0">
+                    <div
+                      key={entry.id}
+                      className="border-b border-border pb-2 last:border-0 last:pb-0"
+                    >
                       <div className="text-sm font-medium capitalize">
                         {entry.new_status.replace(/_/g, ' ')}
                       </div>
@@ -151,7 +159,11 @@ export function QuoteDetailPage() {
                       {transition.target === 'archived' && index > 0 && <DropdownMenuSeparator />}
                       <DropdownMenuItem
                         onClick={() => onStatusChange(transition.target)}
-                        className={transition.target === 'archived' ? 'text-red-400 focus:text-red-300' : undefined}
+                        className={
+                          transition.target === 'archived'
+                            ? 'text-red-400 focus:text-red-300'
+                            : undefined
+                        }
                       >
                         {transition.label}
                       </DropdownMenuItem>
@@ -176,7 +188,12 @@ export function QuoteDetailPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sortedVersions.map((version) => (
-            <VersionCard key={version.id} version={version} quoteId={quote.id} projectId={projectId} />
+            <VersionCard
+              key={version.id}
+              version={version}
+              quoteId={quote.id}
+              projectId={projectId}
+            />
           ))}
         </div>
       )}

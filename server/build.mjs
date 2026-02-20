@@ -7,5 +7,7 @@ await esbuild.build({
   format: 'esm',
   outfile: 'dist/index.js',
   external: ['@supabase/supabase-js', 'pg'],
-  banner: { js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);" },
+  banner: {
+    js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+  },
 });

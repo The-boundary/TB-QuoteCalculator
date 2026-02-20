@@ -22,7 +22,11 @@ const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
 
 export function QuoteBuilderPage() {
   const navigate = useNavigate();
-  const { id: projectId, quoteId, versionId } = useParams<{
+  const {
+    id: projectId,
+    quoteId,
+    versionId,
+  } = useParams<{
     id: string;
     quoteId: string;
     versionId: string;
@@ -92,7 +96,11 @@ export function QuoteBuilderPage() {
         title={`${quote.project?.name ?? 'Quote'} — Version ${versionNumber}`}
         description={`${builder.shotCount} shots for ${builder.duration}s`}
         actions={
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${projectId}/quotes/${quoteId}`)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate(`/projects/${projectId}/quotes/${quoteId}`)}
+          >
             <ArrowLeft className="mr-1 h-4 w-4" />
             Back
           </Button>
@@ -195,7 +203,9 @@ export function QuoteBuilderPage() {
                 min={1}
                 max={600}
                 value={builder.duration}
-                onChange={(event) => builder.setDuration(Math.max(1, Number(event.target.value) || 1))}
+                onChange={(event) =>
+                  builder.setDuration(Math.max(1, Number(event.target.value) || 1))
+                }
                 className="w-28"
               />
               <span className="text-sm text-muted-foreground">{builder.shotCount} total shots</span>
@@ -271,7 +281,10 @@ export function QuoteBuilderPage() {
         </Card>
 
         <div className="flex items-center justify-end gap-3 pb-8">
-          <Button variant="outline" onClick={() => navigate(`/projects/${projectId}/quotes/${quoteId}`)}>
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/projects/${projectId}/quotes/${quoteId}`)}
+          >
             Cancel
           </Button>
           <Button variant="secondary" onClick={saveVersion} disabled={saving}>

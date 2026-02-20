@@ -85,7 +85,9 @@ function TemplateDialog({
         <form onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>{isEdit ? 'Edit Template' : 'New Template'}</DialogTitle>
-            <DialogDescription>Template shots are percentage-based and should total 100%.</DialogDescription>
+            <DialogDescription>
+              Template shots are percentage-based and should total 100%.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
@@ -135,9 +137,7 @@ function TemplateCard({
 
   const updateShot = useCallback(
     (index: number, patch: Partial<FilmTemplateShot>) =>
-      setLocalShots((prev) =>
-        prev.map((row, i) => (i === index ? { ...row, ...patch } : row)),
-      ),
+      setLocalShots((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row))),
     [],
   );
 
@@ -178,7 +178,9 @@ function TemplateCard({
             </div>
           </div>
           <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
-            {Math.abs(totalPct - 100) > 0.01 && <Badge variant="warning">{totalPct.toFixed(1)}%</Badge>}
+            {Math.abs(totalPct - 100) > 0.01 && (
+              <Badge variant="warning">{totalPct.toFixed(1)}%</Badge>
+            )}
             {isAdmin && (
               <Button size="icon-sm" variant="ghost" onClick={() => onDelete(template.id)}>
                 <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -225,8 +227,8 @@ function TemplateCard({
           ))}
 
           <div className="rounded-md border border-border p-3 text-xs text-muted-foreground">
-            For a {template.duration_seconds}s film ({calcShotCount(template.duration_seconds)} shots):{' '}
-            {preview.map((row) => `${row.quantity} ${row.shot_type}`).join(', ')}
+            For a {template.duration_seconds}s film ({calcShotCount(template.duration_seconds)}{' '}
+            shots): {preview.map((row) => `${row.quantity} ${row.shot_type}`).join(', ')}
           </div>
 
           {isAdmin && (
@@ -287,7 +289,9 @@ export function TemplatesPage() {
 
       <div className="mt-6 space-y-4">
         {isLoading ? (
-          Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-24 w-full" />)
+          Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="h-24 w-full" />
+          ))
         ) : error ? (
           <p className="text-sm text-destructive">Failed to load templates.</p>
         ) : templates && templates.length > 0 ? (

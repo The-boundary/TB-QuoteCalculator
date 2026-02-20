@@ -106,7 +106,9 @@ function Row({
       <span className={cn('tabular-nums', bold && 'font-semibold', className)}>
         {sign ?? ''}
         {hours.toFixed(1)} hrs
-        {showPricing && <span className="ml-1 text-xs text-muted-foreground">({formatCurrency(cost)})</span>}
+        {showPricing && (
+          <span className="ml-1 text-xs text-muted-foreground">({formatCurrency(cost)})</span>
+        )}
       </span>
     </div>
   );

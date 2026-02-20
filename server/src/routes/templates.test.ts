@@ -76,11 +76,13 @@ describe('templates routes', () => {
       return fn({ query });
     });
 
-    const res = await request(app).post('/api/templates').send({
-      name: 'Masterplan',
-      duration_seconds: 60,
-      shots: [{ shot_type: 'Aerial', percentage: 40, efficiency_multiplier: 1 }],
-    });
+    const res = await request(app)
+      .post('/api/templates')
+      .send({
+        name: 'Masterplan',
+        duration_seconds: 60,
+        shots: [{ shot_type: 'Aerial', percentage: 40, efficiency_multiplier: 1 }],
+      });
 
     expect(res.status).toBe(201);
     expect(res.body.id).toBe('t1');

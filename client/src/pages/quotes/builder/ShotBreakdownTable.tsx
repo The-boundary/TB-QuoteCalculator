@@ -2,13 +2,7 @@ import { type ReactNode, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ShotRow } from './ShotRow';
 import type { BuilderShot } from './useBuilderState';
 
@@ -64,7 +58,9 @@ export function ShotBreakdownTable({
         {addShotAction}
       </CardHeader>
       <CardContent>
-        <div className="mb-3 text-xs text-muted-foreground">Total allocation: {totalPct.toFixed(1)}%</div>
+        <div className="mb-3 text-xs text-muted-foreground">
+          Total allocation: {totalPct.toFixed(1)}%
+        </div>
 
         {someSelected && (
           <div className="mb-4 flex items-center gap-3 rounded-md border border-sb-border bg-sb-surface-200 px-4 py-2 text-sm">

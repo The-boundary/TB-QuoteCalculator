@@ -1,10 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { dbQuery } from '../services/supabase.js';
-import {
-  createDevelopmentSchema,
-  updateDevelopmentSchema,
-  validate,
-} from '../lib/validation.js';
+import { createDevelopmentSchema, updateDevelopmentSchema, validate } from '../lib/validation.js';
 import { sendNotFound, sendServerError, resolveCreatedBy } from '../utils/route-helpers.js';
 
 const router = Router();

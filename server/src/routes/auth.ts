@@ -20,11 +20,7 @@ function getGotrueUrl(): string {
 }
 
 function base64Url(buf: Buffer): string {
-  return buf
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 function sha256Base64Url(input: string): string {
@@ -64,7 +60,8 @@ function cookieOpts(req: Request) {
 function getBaseUrl(req: Request): string {
   const explicit = process.env.PUBLIC_BASE_URL;
   if (explicit && explicit.trim()) return explicit.trim().replace(/\/+$/, '');
-  const proto = (req.headers['x-forwarded-proto'] as string | undefined) ?? (req.secure ? 'https' : 'http');
+  const proto =
+    (req.headers['x-forwarded-proto'] as string | undefined) ?? (req.secure ? 'https' : 'http');
   return `${proto}://${req.get('host')}`;
 }
 
@@ -88,17 +85,23 @@ async function exchangeAuthCodeForSession(params: {
 
   const data = (await res.json()) as Record<string, unknown>;
   if (!res.ok) {
-    const msg = typeof data?.msg === 'string' && data.msg.trim() ? data.msg : 'Auth exchange failed';
+    const msg =
+      typeof data?.msg === 'string' && data.msg.trim() ? data.msg : 'Auth exchange failed';
     throw new Error(msg);
   }
   if (typeof data?.access_token !== 'string' || typeof data?.refresh_token !== 'string') {
     throw new Error('Auth response missing tokens');
   }
-  const expires_in = typeof data.expires_in === 'number' ? data.expires_in : Number(data.expires_in ?? 0);
+  const expires_in =
+    typeof data.expires_in === 'number' ? data.expires_in : Number(data.expires_in ?? 0);
   return { access_token: data.access_token, refresh_token: data.refresh_token, expires_in };
 }
 
-async function fetchSupabaseUser(supabaseUrl: string, supabaseAnonKey: string, accessToken: string) {
+async function fetchSupabaseUser(
+  supabaseUrl: string,
+  supabaseAnonKey: string,
+  accessToken: string,
+) {
   const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${accessToken}` },
   });
@@ -150,8 +153,10 @@ router.get('/callback', async (req: Request, res: Response) => {
 
   const codeVerifier = req.cookies.pkce_v;
   const expectedState = req.cookies.app_state;
-  if (typeof codeVerifier !== 'string' || !codeVerifier) return res.status(400).send('Missing PKCE verifier');
-  if (typeof expectedState !== 'string' || expectedState !== state) return res.status(400).send('Invalid state');
+  if (typeof codeVerifier !== 'string' || !codeVerifier)
+    return res.status(400).send('Missing PKCE verifier');
+  if (typeof expectedState !== 'string' || expectedState !== state)
+    return res.status(400).send('Invalid state');
 
   try {
     const supabaseUrl = getGotrueUrl();
@@ -207,7 +212,8 @@ router.get('/session', async (req: Request, res: Response) => {
     });
   }
 
-  const token = typeof req.cookies.tb_access_token === 'string' ? req.cookies.tb_access_token : null;
+  const token =
+    typeof req.cookies.tb_access_token === 'string' ? req.cookies.tb_access_token : null;
   if (!token) return res.json({ session: null, access: null });
 
   try {
@@ -241,7 +247,9 @@ router.get('/session', async (req: Request, res: Response) => {
     }
 
     res.json({
-      session: user ? { user } : { user: { id: userId, email: decoded.email ?? null, user_metadata: null } },
+      session: user
+        ? { user }
+        : { user: { id: userId, email: decoded.email ?? null, user_metadata: null } },
       access: access ?? null,
     });
   } catch (err) {

@@ -146,7 +146,9 @@ export function NewProjectDialog({
             onClick={submit}
             disabled={!canSubmit || createProject.isPending || createDevelopment.isPending}
           >
-            {createProject.isPending || createDevelopment.isPending ? 'Creating...' : 'Create Project'}
+            {createProject.isPending || createDevelopment.isPending
+              ? 'Creating...'
+              : 'Create Project'}
           </Button>
         </DialogFooter>
       </DialogContent>

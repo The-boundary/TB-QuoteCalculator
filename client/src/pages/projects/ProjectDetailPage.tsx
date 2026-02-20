@@ -69,7 +69,11 @@ export function ProjectDetailPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <Badge variant={quote.mode === 'budget' ? 'info' : 'secondary'}>{quote.mode}</Badge>
-                <Badge variant={statusVariant(quote.status) as 'info' | 'secondary' | 'warning' | 'success'}>
+                <Badge
+                  variant={
+                    statusVariant(quote.status) as 'info' | 'secondary' | 'warning' | 'success'
+                  }
+                >
                   {quote.status.replace(/_/g, ' ')}
                 </Badge>
               </div>
@@ -91,7 +95,9 @@ export function ProjectDetailPage() {
       </div>
 
       {project.quotes.length === 0 && (
-        <p className="mt-6 text-sm text-muted-foreground">No quotes yet. Create your first quote.</p>
+        <p className="mt-6 text-sm text-muted-foreground">
+          No quotes yet. Create your first quote.
+        </p>
       )}
 
       <NewQuoteDialog projectId={id} open={newQuoteOpen} onOpenChange={setNewQuoteOpen} />

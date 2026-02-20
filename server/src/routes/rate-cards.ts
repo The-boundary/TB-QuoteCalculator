@@ -1,6 +1,11 @@
 import { Router, type Request, type Response } from 'express';
 import { dbQuery } from '../services/supabase.js';
-import { sendServerError, sendNotFound, resolveCreatedBy, requireAdmin } from '../utils/route-helpers.js';
+import {
+  sendServerError,
+  sendNotFound,
+  resolveCreatedBy,
+  requireAdmin,
+} from '../utils/route-helpers.js';
 import {
   validate,
   createRateCardSchema,
@@ -12,9 +17,7 @@ const router = Router();
 
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const { rows } = await dbQuery(
-      `SELECT * FROM rate_cards ORDER BY created_at DESC`,
-    );
+    const { rows } = await dbQuery(`SELECT * FROM rate_cards ORDER BY created_at DESC`);
     res.json(rows);
   } catch (err) {
     return sendServerError(res, err, 'Failed to list rate cards');
@@ -23,10 +26,9 @@ router.get('/', async (_req: Request, res: Response) => {
 
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const { rows: rcRows } = await dbQuery(
-      `SELECT * FROM rate_cards WHERE id = $1`,
-      [req.params.id],
-    );
+    const { rows: rcRows } = await dbQuery(`SELECT * FROM rate_cards WHERE id = $1`, [
+      req.params.id,
+    ]);
     const rateCard = rcRows[0];
     if (!rateCard) return sendNotFound(res, 'Rate card');
 
@@ -155,10 +157,10 @@ router.delete('/:id/items/:itemId', async (req: Request, res: Response) => {
   try {
     if (requireAdmin(req, res)) return;
 
-    await dbQuery(
-      `DELETE FROM rate_card_items WHERE id = $1 AND rate_card_id = $2`,
-      [req.params.itemId, req.params.id],
-    );
+    await dbQuery(`DELETE FROM rate_card_items WHERE id = $1 AND rate_card_id = $2`, [
+      req.params.itemId,
+      req.params.id,
+    ]);
 
     res.status(204).end();
   } catch (err) {

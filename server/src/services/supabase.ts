@@ -51,9 +51,7 @@ export async function dbQuery<T extends pg.QueryResultRow = any>(
 }
 
 /** Run multiple queries in a transaction against quote_calculator schema. */
-export async function dbTransaction<T>(
-  fn: (client: pg.PoolClient) => Promise<T>,
-): Promise<T> {
+export async function dbTransaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
   if (!pool) throw new Error('Database not configured (SUPABASE_DATABASE_URL missing)');
   const client = await pool.connect();
   try {

@@ -1,8 +1,13 @@
 import { Router, type Request, type Response } from 'express';
 import { dbQuery, dbTransaction } from '../services/supabase.js';
 import {
-  sendServerError, sendNotFound, httpError, handleRouteError,
-  resolveCreatedBy, requireAdmin, groupByKey,
+  sendServerError,
+  sendNotFound,
+  httpError,
+  handleRouteError,
+  resolveCreatedBy,
+  requireAdmin,
+  groupByKey,
 } from '../utils/route-helpers.js';
 import { validate, createTemplateSchema, updateTemplateSchema } from '../lib/validation.js';
 
@@ -36,10 +41,9 @@ router.get('/', async (_req: Request, res: Response) => {
 
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const { rows: tRows } = await dbQuery(
-      `SELECT * FROM film_templates WHERE id = $1`,
-      [req.params.id],
-    );
+    const { rows: tRows } = await dbQuery(`SELECT * FROM film_templates WHERE id = $1`, [
+      req.params.id,
+    ]);
     const template = tRows[0];
     if (!template) return sendNotFound(res, 'Template');
 
@@ -120,10 +124,9 @@ router.put('/:id', async (req: Request, res: Response) => {
 
       let updatedShots: unknown[] = [];
       if (shots !== undefined) {
-        await client.query(
-          `DELETE FROM film_template_shots WHERE template_id = $1`,
-          [req.params.id],
-        );
+        await client.query(`DELETE FROM film_template_shots WHERE template_id = $1`, [
+          req.params.id,
+        ]);
 
         for (let idx = 0; idx < shots.length; idx++) {
           const s = shots[idx];
@@ -131,7 +134,13 @@ router.put('/:id', async (req: Request, res: Response) => {
             `INSERT INTO film_template_shots (template_id, shot_type, percentage, efficiency_multiplier, sort_order)
              VALUES ($1, $2, $3, $4, $5)
              RETURNING *`,
-            [req.params.id, s.shot_type, s.percentage, s.efficiency_multiplier, s.sort_order ?? idx],
+            [
+              req.params.id,
+              s.shot_type,
+              s.percentage,
+              s.efficiency_multiplier,
+              s.sort_order ?? idx,
+            ],
           );
           updatedShots.push(rows[0]);
         }
@@ -156,10 +165,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     if (requireAdmin(req, res)) return;
 
-    await dbQuery(
-      `DELETE FROM film_templates WHERE id = $1`,
-      [req.params.id],
-    );
+    await dbQuery(`DELETE FROM film_templates WHERE id = $1`, [req.params.id]);
 
     res.status(204).end();
   } catch (err) {

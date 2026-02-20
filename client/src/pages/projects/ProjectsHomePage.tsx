@@ -30,12 +30,15 @@ function ProjectCardSkeleton() {
   );
 }
 
-function ActiveProjectCard({ project, onClick }: { project: ProjectListItem; onClick: () => void }) {
+function ActiveProjectCard({
+  project,
+  onClick,
+}: {
+  project: ProjectListItem;
+  onClick: () => void;
+}) {
   return (
-    <Card
-      className="cursor-pointer transition-colors hover:border-sb-brand/60"
-      onClick={onClick}
-    >
+    <Card className="cursor-pointer transition-colors hover:border-sb-brand/60" onClick={onClick}>
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <div>
@@ -63,10 +66,7 @@ function ForecastedProjectCard({
   onLink: () => void;
 }) {
   return (
-    <Card
-      className="cursor-pointer transition-colors hover:border-sb-brand/60"
-      onClick={onClick}
-    >
+    <Card className="cursor-pointer transition-colors hover:border-sb-brand/60" onClick={onClick}>
       <CardHeader>
         <p className="text-sm font-semibold">{project.name}</p>
         <p className="text-xs text-muted-foreground">{project.development_name}</p>
@@ -138,9 +138,7 @@ export function ProjectsHomePage() {
           <p className="text-sm text-muted-foreground">Projects linked to Kantata</p>
           <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {isLoading
-              ? Array.from({ length: 3 }).map((_, index) => (
-                  <ProjectCardSkeleton key={index} />
-                ))
+              ? Array.from({ length: 3 }).map((_, index) => <ProjectCardSkeleton key={index} />)
               : activeProjects.map((project) => (
                   <ActiveProjectCard
                     key={project.id}

@@ -22,7 +22,8 @@ export function HourPoolBar({
   const remaining = budget - used;
   const isOver = remaining < 0;
 
-  const barColor = percentage > 100 ? 'bg-red-500' : percentage >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
+  const barColor =
+    percentage > 100 ? 'bg-red-500' : percentage >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
   const textColor = isOver ? 'text-red-400' : 'text-emerald-400';
 
   const usedCost = used * hourlyRate;

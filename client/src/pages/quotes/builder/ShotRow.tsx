@@ -67,14 +67,20 @@ export const ShotRow = memo(function ShotRow({
             <Minus className="h-3 w-3" />
           </Button>
           <span className="w-9 text-center tabular-nums">{shot.quantity}</span>
-          <Button variant="ghost" size="icon-sm" onClick={() => onUpdateQuantity(index, shot.quantity + 1)}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => onUpdateQuantity(index, shot.quantity + 1)}
+          >
             <Plus className="h-3 w-3" />
           </Button>
         </div>
         {shot.manualOverride && <span className="text-xs text-amber-500">manual</span>}
       </TableCell>
 
-      <TableCell className="tabular-nums text-muted-foreground">{shot.base_hours_each.toFixed(1)}h</TableCell>
+      <TableCell className="tabular-nums text-muted-foreground">
+        {shot.base_hours_each.toFixed(1)}h
+      </TableCell>
 
       <TableCell>
         <Input

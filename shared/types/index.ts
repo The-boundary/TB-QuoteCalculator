@@ -60,12 +60,7 @@ export interface RateCardWithItems extends RateCard {
 // Quotes
 export type QuoteMode = 'retainer' | 'budget';
 
-export type QuoteStatus =
-  | 'draft'
-  | 'negotiating'
-  | 'awaiting_approval'
-  | 'confirmed'
-  | 'archived';
+export type QuoteStatus = 'draft' | 'negotiating' | 'awaiting_approval' | 'confirmed' | 'archived';
 
 export interface Quote {
   id: string;

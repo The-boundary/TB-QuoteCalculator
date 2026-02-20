@@ -74,7 +74,6 @@ function mapShots(shots: ShotInput[]): MappedShot[] {
   });
 }
 
-
 /** Calculate pool budget hours and amount for a version. */
 function calculatePoolBudget(
   mode: string,
@@ -95,9 +94,7 @@ function calculatePoolBudget(
   if (o.pool_budget_hours !== undefined) {
     const poolHours = o.pool_budget_hours;
     const poolAmount =
-      o.pool_budget_amount !== undefined
-        ? o.pool_budget_amount
-        : (poolHours ?? 0) * hourlyRate;
+      o.pool_budget_amount !== undefined ? o.pool_budget_amount : (poolHours ?? 0) * hourlyRate;
     return { poolHours, poolAmount };
   }
 
@@ -108,10 +105,8 @@ function calculatePoolBudget(
   }
 
   // Fallback: use existing values or calculate from rate card
-  const poolHours =
-    o.existing_pool_hours ?? poolBudgetHours(durationSeconds, hoursPerSecond);
-  const poolAmount =
-    o.existing_pool_amount ?? (poolHours !== null ? poolHours * hourlyRate : null);
+  const poolHours = o.existing_pool_hours ?? poolBudgetHours(durationSeconds, hoursPerSecond);
+  const poolAmount = o.existing_pool_amount ?? (poolHours !== null ? poolHours * hourlyRate : null);
   return { poolHours, poolAmount };
 }
 
@@ -411,13 +406,7 @@ router.put('/:id/status', async (req: Request, res: Response) => {
       await client.query(
         `INSERT INTO quote_status_log (quote_id, old_status, new_status, changed_by, changed_by_email)
          VALUES ($1, $2, $3, $4, $5)`,
-        [
-          req.params.id,
-          current.status,
-          parsed.data.status,
-          req.user!.id,
-          req.user?.email ?? null,
-        ],
+        [req.params.id, current.status, parsed.data.status, req.user!.id, req.user?.email ?? null],
       );
 
       return updatedRows[0];

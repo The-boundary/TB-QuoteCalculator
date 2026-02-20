@@ -17,6 +17,7 @@
 Update all TypeScript interfaces to match the new data model.
 
 **Files:**
+
 - Modify: `shared/types/index.ts`
 - Modify: `shared/types/index.test.ts`
 
@@ -29,8 +30,13 @@ Add tests for new types in `shared/types/index.test.ts`:
 describe('Development', () => {
   it('has required fields', () => {
     const dev: Development = {
-      id: 'uuid', name: 'Dubai Islands E', client_name: 'Nakheel',
-      description: null, created_by: 'uuid', created_at: '', updated_at: '',
+      id: 'uuid',
+      name: 'Dubai Islands E',
+      client_name: 'Nakheel',
+      description: null,
+      created_by: 'uuid',
+      created_at: '',
+      updated_at: '',
     };
     expect(dev.name).toBe('Dubai Islands E');
   });
@@ -39,9 +45,15 @@ describe('Development', () => {
 describe('Project', () => {
   it('supports forecasted project', () => {
     const p: Project = {
-      id: 'uuid', development_id: 'uuid', name: 'Masterplan Film',
-      kantata_id: null, status: null, is_forecasted: true,
-      created_by: 'uuid', created_at: '', updated_at: '',
+      id: 'uuid',
+      development_id: 'uuid',
+      name: 'Masterplan Film',
+      kantata_id: null,
+      status: null,
+      is_forecasted: true,
+      created_by: 'uuid',
+      created_at: '',
+      updated_at: '',
     };
     expect(p.is_forecasted).toBe(true);
     expect(p.kantata_id).toBeNull();
@@ -49,9 +61,15 @@ describe('Project', () => {
 
   it('supports kantata-linked project', () => {
     const p: Project = {
-      id: 'uuid', development_id: 'uuid', name: 'Masterplan Film',
-      kantata_id: '23046', status: 'active', is_forecasted: false,
-      created_by: 'uuid', created_at: '', updated_at: '',
+      id: 'uuid',
+      development_id: 'uuid',
+      name: 'Masterplan Film',
+      kantata_id: '23046',
+      status: 'active',
+      is_forecasted: false,
+      created_by: 'uuid',
+      created_at: '',
+      updated_at: '',
     };
     expect(p.kantata_id).toBe('23046');
   });
@@ -59,7 +77,13 @@ describe('Project', () => {
 
 describe('QuoteStatus (new)', () => {
   it('includes new statuses', () => {
-    const statuses: QuoteStatus[] = ['draft', 'negotiating', 'awaiting_approval', 'confirmed', 'archived'];
+    const statuses: QuoteStatus[] = [
+      'draft',
+      'negotiating',
+      'awaiting_approval',
+      'confirmed',
+      'archived',
+    ];
     expect(statuses).toHaveLength(5);
   });
 });
@@ -67,9 +91,14 @@ describe('QuoteStatus (new)', () => {
 describe('Quote (restructured)', () => {
   it('has project_id and mode', () => {
     const q: Quote = {
-      id: 'uuid', project_id: 'uuid', mode: 'retainer',
-      status: 'draft', rate_card_id: 'uuid',
-      created_by: 'uuid', created_at: '', updated_at: '',
+      id: 'uuid',
+      project_id: 'uuid',
+      mode: 'retainer',
+      status: 'draft',
+      rate_card_id: 'uuid',
+      created_by: 'uuid',
+      created_at: '',
+      updated_at: '',
     };
     expect(q.mode).toBe('retainer');
     expect(q.project_id).toBeDefined();
@@ -79,9 +108,13 @@ describe('Quote (restructured)', () => {
 describe('QuoteStatusLogEntry', () => {
   it('tracks status changes', () => {
     const entry: QuoteStatusLogEntry = {
-      id: 'uuid', quote_id: 'uuid', old_status: 'draft',
-      new_status: 'negotiating', changed_by: 'uuid',
-      changed_by_email: 'stan@the-boundary.com', changed_at: '',
+      id: 'uuid',
+      quote_id: 'uuid',
+      old_status: 'draft',
+      new_status: 'negotiating',
+      changed_by: 'uuid',
+      changed_by_email: 'stan@the-boundary.com',
+      changed_at: '',
     };
     expect(entry.new_status).toBe('negotiating');
   });
@@ -90,9 +123,15 @@ describe('QuoteStatusLogEntry', () => {
 describe('VersionShot (with percentage)', () => {
   it('has percentage field', () => {
     const shot: VersionShot = {
-      id: 'uuid', version_id: 'uuid', shot_type: 'Aerial',
-      percentage: 40.0, quantity: 6, base_hours_each: 60,
-      efficiency_multiplier: 1.0, adjusted_hours: 360, sort_order: 0,
+      id: 'uuid',
+      version_id: 'uuid',
+      shot_type: 'Aerial',
+      percentage: 40.0,
+      quantity: 6,
+      base_hours_each: 60,
+      efficiency_multiplier: 1.0,
+      adjusted_hours: 360,
+      sort_order: 0,
     };
     expect(shot.percentage).toBe(40.0);
   });
@@ -101,11 +140,18 @@ describe('VersionShot (with percentage)', () => {
 describe('QuoteVersion (with new fields)', () => {
   it('has shot_count and hourly_rate', () => {
     const v: QuoteVersion = {
-      id: 'uuid', quote_id: 'uuid', version_number: 1,
-      duration_seconds: 60, shot_count: 15,
-      pool_budget_hours: null, pool_budget_amount: null,
-      total_hours: 120, hourly_rate: 125, notes: null,
-      created_by: 'uuid', created_at: '',
+      id: 'uuid',
+      quote_id: 'uuid',
+      version_number: 1,
+      duration_seconds: 60,
+      shot_count: 15,
+      pool_budget_hours: null,
+      pool_budget_amount: null,
+      total_hours: 120,
+      hourly_rate: 125,
+      notes: null,
+      created_by: 'uuid',
+      created_at: '',
     };
     expect(v.shot_count).toBe(15);
     expect(v.pool_budget_hours).toBeNull(); // retainer mode
@@ -115,9 +161,15 @@ describe('QuoteVersion (with new fields)', () => {
 describe('RateCard (with hourly_rate)', () => {
   it('has hourly_rate', () => {
     const rc: RateCard = {
-      id: 'uuid', name: 'DHRE 2025', is_default: true,
-      hours_per_second: 17.33, editing_hours_per_30s: 100,
-      hourly_rate: 125, created_by: 'uuid', created_at: '', updated_at: '',
+      id: 'uuid',
+      name: 'DHRE 2025',
+      is_default: true,
+      hours_per_second: 17.33,
+      editing_hours_per_30s: 100,
+      hourly_rate: 125,
+      created_by: 'uuid',
+      created_at: '',
+      updated_at: '',
     };
     expect(rc.hourly_rate).toBe(125);
   });
@@ -126,8 +178,12 @@ describe('RateCard (with hourly_rate)', () => {
 describe('FilmTemplateShot (percentage-based)', () => {
   it('uses percentage instead of quantity', () => {
     const shot: FilmTemplateShot = {
-      id: 'uuid', template_id: 'uuid', shot_type: 'Aerial',
-      percentage: 40.0, efficiency_multiplier: 1.0, sort_order: 0,
+      id: 'uuid',
+      template_id: 'uuid',
+      shot_type: 'Aerial',
+      percentage: 40.0,
+      efficiency_multiplier: 1.0,
+      sort_order: 0,
     };
     expect(shot.percentage).toBe(40.0);
     expect((shot as any).quantity).toBeUndefined();
@@ -137,8 +193,11 @@ describe('FilmTemplateShot (percentage-based)', () => {
 describe('KantataWorkspace', () => {
   it('has kantata fields', () => {
     const ws: KantataWorkspace = {
-      kantata_id: '23046', title: 'Dubai Islands Phase E',
-      status: 'Active', start_date: '2026-01-01', due_date: '2026-06-30',
+      kantata_id: '23046',
+      title: 'Dubai Islands Phase E',
+      status: 'Active',
+      start_date: '2026-01-01',
+      due_date: '2026-06-30',
     };
     expect(ws.kantata_id).toBe('23046');
   });
@@ -327,6 +386,7 @@ git commit -m "feat: update shared types for project hierarchy and dual quote mo
 Create a migration script that creates new tables and modifies existing ones.
 
 **Files:**
+
 - Create: `server/src/scripts/migrate-v2.ts`
 
 **Step 1: Write the migration script**
@@ -338,7 +398,10 @@ Create a migration script that creates new tables and modifies existing ones.
 import pg from 'pg';
 
 const DATABASE_URL = process.env.SUPABASE_DATABASE_URL;
-if (!DATABASE_URL) { console.error('SUPABASE_DATABASE_URL required'); process.exit(1); }
+if (!DATABASE_URL) {
+  console.error('SUPABASE_DATABASE_URL required');
+  process.exit(1);
+}
 
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 
@@ -377,7 +440,9 @@ async function migrate() {
       )
     `);
     await client.query('CREATE INDEX IF NOT EXISTS idx_projects_dev ON projects(development_id)');
-    await client.query('CREATE INDEX IF NOT EXISTS idx_projects_kantata ON projects(kantata_id) WHERE kantata_id IS NOT NULL');
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS idx_projects_kantata ON projects(kantata_id) WHERE kantata_id IS NOT NULL',
+    );
     console.log('✓ projects table');
 
     // 3. Add hourly_rate to rate_cards
@@ -388,8 +453,12 @@ async function migrate() {
 
     // 4. Modify quotes: add project_id, mode; remove client_name, project_name; change status enum
     // First add new columns
-    await client.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS project_id uuid REFERENCES projects(id)`);
-    await client.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'retainer'`);
+    await client.query(
+      `ALTER TABLE quotes ADD COLUMN IF NOT EXISTS project_id uuid REFERENCES projects(id)`,
+    );
+    await client.query(
+      `ALTER TABLE quotes ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'retainer'`,
+    );
 
     // Migrate existing quotes: create a "Legacy" development and project for each
     const { rows: existingQuotes } = await client.query(`
@@ -398,23 +467,33 @@ async function migrate() {
 
     if (existingQuotes.length > 0) {
       // Create a "Legacy Imports" development
-      const { rows: [legacyDev] } = await client.query(`
+      const {
+        rows: [legacyDev],
+      } = await client.query(`
         INSERT INTO developments (name, client_name, description)
         VALUES ('Legacy Imports', null, 'Auto-migrated from v1 quotes')
         RETURNING id
       `);
 
       for (const q of existingQuotes) {
-        const { rows: [project] } = await client.query(`
+        const {
+          rows: [project],
+        } = await client.query(
+          `
           INSERT INTO projects (development_id, name, is_forecasted)
           VALUES ($1, $2, true)
           RETURNING id
-        `, [legacyDev.id, `${q.client_name} - ${q.project_name}`]);
+        `,
+          [legacyDev.id, `${q.client_name} - ${q.project_name}`],
+        );
 
-        await client.query(`
+        await client.query(
+          `
           UPDATE quotes SET project_id = $1
           WHERE client_name = $2 AND project_name = $3 AND project_id IS NULL
-        `, [project.id, q.client_name, q.project_name]);
+        `,
+          [project.id, q.client_name, q.project_name],
+        );
       }
       console.log(`✓ migrated ${existingQuotes.length} legacy quotes`);
     }
@@ -431,7 +510,9 @@ async function migrate() {
 
     // Update existing statuses to new enum
     await client.query(`UPDATE quotes SET status = 'confirmed' WHERE status = 'approved'`);
-    await client.query(`UPDATE quotes SET status = 'negotiating' WHERE status = 'pending_approval'`);
+    await client.query(
+      `UPDATE quotes SET status = 'negotiating' WHERE status = 'pending_approval'`,
+    );
     await client.query(`UPDATE quotes SET status = 'archived' WHERE status = 'sent'`);
 
     // Drop old columns (after migration)
@@ -451,22 +532,32 @@ async function migrate() {
         changed_at timestamptz NOT NULL DEFAULT now()
       )
     `);
-    await client.query('CREATE INDEX IF NOT EXISTS idx_status_log_quote ON quote_status_log(quote_id)');
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS idx_status_log_quote ON quote_status_log(quote_id)',
+    );
     console.log('✓ quote_status_log table');
 
     // 6. Modify quote_versions: add shot_count, pool_budget_amount, hourly_rate; make pool nullable
     await client.query(`ALTER TABLE quote_versions ADD COLUMN IF NOT EXISTS shot_count int`);
-    await client.query(`ALTER TABLE quote_versions ADD COLUMN IF NOT EXISTS pool_budget_amount numeric`);
-    await client.query(`ALTER TABLE quote_versions ADD COLUMN IF NOT EXISTS hourly_rate numeric NOT NULL DEFAULT 125`);
+    await client.query(
+      `ALTER TABLE quote_versions ADD COLUMN IF NOT EXISTS pool_budget_amount numeric`,
+    );
+    await client.query(
+      `ALTER TABLE quote_versions ADD COLUMN IF NOT EXISTS hourly_rate numeric NOT NULL DEFAULT 125`,
+    );
     await client.query(`ALTER TABLE quote_versions ALTER COLUMN pool_budget_hours DROP NOT NULL`);
     console.log('✓ quote_versions updated');
 
     // 7. Modify version_shots: add percentage
-    await client.query(`ALTER TABLE version_shots ADD COLUMN IF NOT EXISTS percentage numeric NOT NULL DEFAULT 0`);
+    await client.query(
+      `ALTER TABLE version_shots ADD COLUMN IF NOT EXISTS percentage numeric NOT NULL DEFAULT 0`,
+    );
     console.log('✓ version_shots.percentage added');
 
     // 8. Modify film_template_shots: add percentage, drop quantity
-    await client.query(`ALTER TABLE film_template_shots ADD COLUMN IF NOT EXISTS percentage numeric NOT NULL DEFAULT 0`);
+    await client.query(
+      `ALTER TABLE film_template_shots ADD COLUMN IF NOT EXISTS percentage numeric NOT NULL DEFAULT 0`,
+    );
     // Migrate existing template shots: convert quantity to percentage
     await client.query(`
       UPDATE film_template_shots fts SET percentage = (
@@ -483,50 +574,65 @@ async function migrate() {
     // 9. Seed default percentage-based templates
     // First check if they exist
     const { rows: existingTemplates } = await client.query(
-      `SELECT name FROM film_templates WHERE name IN ('Masterplan Film', 'Community Film', 'Product Film')`
+      `SELECT name FROM film_templates WHERE name IN ('Masterplan Film', 'Community Film', 'Product Film')`,
     );
-    const existingNames = new Set(existingTemplates.map(t => t.name));
+    const existingNames = new Set(existingTemplates.map((t) => t.name));
 
     if (!existingNames.has('Masterplan Film')) {
-      const { rows: [t] } = await client.query(`
+      const {
+        rows: [t],
+      } = await client.query(`
         INSERT INTO film_templates (name, duration_seconds, description)
         VALUES ('Masterplan Film', 60, 'Standard masterplan aerial film')
         RETURNING id
       `);
-      await client.query(`
+      await client.query(
+        `
         INSERT INTO film_template_shots (template_id, shot_type, percentage, efficiency_multiplier, sort_order) VALUES
         ($1, 'Site/Masterplan Overview (wide)', 20, 1.0, 0),
         ($1, 'Aerial Exterior View', 40, 1.0, 1),
         ($1, 'Street-Level Exterior', 40, 1.0, 2)
-      `, [t.id]);
+      `,
+        [t.id],
+      );
     }
 
     if (!existingNames.has('Community Film')) {
-      const { rows: [t] } = await client.query(`
+      const {
+        rows: [t],
+      } = await client.query(`
         INSERT INTO film_templates (name, duration_seconds, description)
         VALUES ('Community Film', 60, 'Community-focused film with mixed perspectives')
         RETURNING id
       `);
-      await client.query(`
+      await client.query(
+        `
         INSERT INTO film_template_shots (template_id, shot_type, percentage, efficiency_multiplier, sort_order) VALUES
         ($1, 'Aerial Exterior View', 25, 1.0, 0),
         ($1, 'Semi-Aerial Exterior View', 25, 1.0, 1),
         ($1, 'Street-Level Exterior', 50, 1.0, 2)
-      `, [t.id]);
+      `,
+        [t.id],
+      );
     }
 
     if (!existingNames.has('Product Film')) {
-      const { rows: [t] } = await client.query(`
+      const {
+        rows: [t],
+      } = await client.query(`
         INSERT INTO film_templates (name, duration_seconds, description)
         VALUES ('Product Film', 60, 'Interior-focused product showcase')
         RETURNING id
       `);
-      await client.query(`
+      await client.query(
+        `
         INSERT INTO film_template_shots (template_id, shot_type, percentage, efficiency_multiplier, sort_order) VALUES
         ($1, 'Aerial Exterior View', 20, 1.0, 0),
         ($1, 'Street-Level Exterior', 20, 1.0, 1),
         ($1, 'Interior View', 60, 1.0, 2)
-      `, [t.id]);
+      `,
+        [t.id],
+      );
     }
     console.log('✓ default templates seeded');
 
@@ -555,6 +661,7 @@ SUPABASE_DATABASE_URL="postgresql://postgres:<password>@192.168.0.74:5433/postgr
 **Step 3: Verify tables exist**
 
 Connect to psql and verify:
+
 ```sql
 SET search_path TO quote_calculator;
 \dt
@@ -579,6 +686,7 @@ git commit -m "feat: add v2 migration script for project hierarchy and dual quot
 Update the pure calculation functions to support the new shot count formula and percentage-based distribution.
 
 **Files:**
+
 - Modify: `server/src/lib/quoteCalc.ts`
 - Modify: `server/src/lib/quoteCalc.test.ts`
 
@@ -589,11 +697,11 @@ Add to `server/src/lib/quoteCalc.test.ts`:
 ```typescript
 describe('shotCount', () => {
   it('calculates ceil(duration/4) for standard durations', () => {
-    expect(shotCount(15)).toBe(4);   // ceil(15/4) = 4
-    expect(shotCount(30)).toBe(8);   // ceil(30/4) = 8
-    expect(shotCount(45)).toBe(12);  // ceil(45/4) = 12
-    expect(shotCount(60)).toBe(15);  // ceil(60/4) = 15
-    expect(shotCount(90)).toBe(23);  // ceil(90/4) = 23
+    expect(shotCount(15)).toBe(4); // ceil(15/4) = 4
+    expect(shotCount(30)).toBe(8); // ceil(30/4) = 8
+    expect(shotCount(45)).toBe(12); // ceil(45/4) = 12
+    expect(shotCount(60)).toBe(15); // ceil(60/4) = 15
+    expect(shotCount(90)).toBe(23); // ceil(90/4) = 23
     expect(shotCount(120)).toBe(30); // ceil(120/4) = 30
   });
 
@@ -747,6 +855,7 @@ git commit -m "feat: add shot count formula, percentage distribution, and budget
 Update Zod schemas for new request shapes.
 
 **Files:**
+
 - Modify: `server/src/lib/validation.ts`
 - Modify: `server/src/lib/validation.test.ts`
 
@@ -785,7 +894,11 @@ describe('createQuoteSchema (v2)', () => {
   });
 
   it('rejects invalid mode', () => {
-    const invalid = { project_id: crypto.randomUUID(), mode: 'other', rate_card_id: crypto.randomUUID() };
+    const invalid = {
+      project_id: crypto.randomUUID(),
+      mode: 'other',
+      rate_card_id: crypto.randomUUID(),
+    };
     expect(validate(createQuoteSchema, invalid).success).toBe(false);
   });
 });
@@ -806,8 +919,11 @@ describe('updateStatusSchema (v2)', () => {
 describe('shotSchema (v2 with percentage)', () => {
   it('includes percentage', () => {
     const valid = {
-      shot_type: 'Aerial', percentage: 40.0, quantity: 6,
-      base_hours_each: 60, efficiency_multiplier: 1.0,
+      shot_type: 'Aerial',
+      percentage: 40.0,
+      quantity: 6,
+      base_hours_each: 60,
+      efficiency_multiplier: 1.0,
     };
     expect(validate(shotSchema, valid).success).toBe(true);
   });
@@ -816,8 +932,10 @@ describe('shotSchema (v2 with percentage)', () => {
 describe('createVersionSchema (v2 with budget fields)', () => {
   it('accepts pool_budget_amount and hourly_rate', () => {
     const valid = {
-      duration_seconds: 60, hourly_rate: 125,
-      pool_budget_amount: 10000, shots: [],
+      duration_seconds: 60,
+      hourly_rate: 125,
+      pool_budget_amount: 10000,
+      shots: [],
     };
     expect(validate(createVersionSchema, valid).success).toBe(true);
   });
@@ -994,6 +1112,7 @@ git commit -m "feat: update validation schemas for project hierarchy and dual mo
 New CRUD endpoints for developments and projects.
 
 **Files:**
+
 - Create: `server/src/routes/developments.ts`
 - Create: `server/src/routes/projects.ts`
 - Modify: `server/src/routes/index.ts` (mount new routes)
@@ -1071,7 +1190,8 @@ router.put('/:id', async (req: Request, res: Response) => {
         values.push(val);
       }
     }
-    if (fields.length === 0) return res.status(400).json({ error: { message: 'No fields to update' } });
+    if (fields.length === 0)
+      return res.status(400).json({ error: { message: 'No fields to update' } });
 
     fields.push(`updated_at = NOW()`);
     values.push(req.params.id);
@@ -1124,7 +1244,8 @@ router.get('/', async (req: Request, res: Response) => {
       idx += 2;
     }
 
-    const { rows } = await dbQuery(`
+    const { rows } = await dbQuery(
+      `
       SELECT p.*,
         d.name as development_name,
         d.client_name as development_client_name,
@@ -1136,7 +1257,9 @@ router.get('/', async (req: Request, res: Response) => {
       ${where}
       GROUP BY p.id, d.name, d.client_name
       ORDER BY p.updated_at DESC
-    `, params);
+    `,
+      params,
+    );
 
     res.json(rows);
   } catch (err) {
@@ -1147,16 +1270,20 @@ router.get('/', async (req: Request, res: Response) => {
 // GET /projects/:id — single project with quotes
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const { rows: projectRows } = await dbQuery(`
+    const { rows: projectRows } = await dbQuery(
+      `
       SELECT p.*, d.name as development_name, d.client_name as development_client_name
       FROM projects p
       JOIN developments d ON d.id = p.development_id
       WHERE p.id = $1
-    `, [req.params.id]);
+    `,
+      [req.params.id],
+    );
     if (!projectRows[0]) return sendNotFound(res, 'Project');
 
     // Get quotes for this project with latest version info
-    const { rows: quotes } = await dbQuery(`
+    const { rows: quotes } = await dbQuery(
+      `
       SELECT q.*,
         (SELECT json_build_object(
           'id', v.id, 'version_number', v.version_number,
@@ -1167,7 +1294,9 @@ router.get('/:id', async (req: Request, res: Response) => {
       FROM quotes q
       WHERE q.project_id = $1 AND q.status != 'archived'
       ORDER BY q.updated_at DESC
-    `, [req.params.id]);
+    `,
+      [req.params.id],
+    );
 
     res.json({ ...projectRows[0], quotes });
   } catch (err) {
@@ -1233,18 +1362,23 @@ router.get('/workspaces', async (req: Request, res: Response) => {
   try {
     const search = req.query.search as string;
     if (!search || search.length < 2) {
-      return res.status(400).json({ error: { message: 'Search term must be at least 2 characters' } });
+      return res
+        .status(400)
+        .json({ error: { message: 'Search term must be at least 2 characters' } });
     }
 
     // Query traffic_light schema directly (read-only cross-schema)
-    const { rows } = await dbQuery(`
+    const { rows } = await dbQuery(
+      `
       SELECT kantata_id, title, status, start_date, due_date
       FROM traffic_light.kantata_workspaces
       WHERE is_current = true
         AND (title ILIKE $1 OR kantata_id = $2)
       ORDER BY kantata_id DESC
       LIMIT 20
-    `, [`%${search}%`, search]);
+    `,
+      [`%${search}%`, search],
+    );
 
     res.json(rows);
   } catch (err) {
@@ -1290,6 +1424,7 @@ git commit -m "feat: add development, project, and Kantata search routes"
 Update quote CRUD to use project_id, new modes, new statuses, and audit trail.
 
 **Files:**
+
 - Modify: `server/src/routes/quotes.ts`
 - Modify: `server/src/routes/quotes.test.ts`
 
@@ -1367,6 +1502,7 @@ git commit -m "feat: restructure quote routes for project hierarchy and dual mod
 Update templates to use percentage-based shots and rate cards to include hourly_rate.
 
 **Files:**
+
 - Modify: `server/src/routes/templates.ts`
 - Modify: `server/src/routes/rate-cards.ts`
 - Modify: `server/src/routes/rate-cards.test.ts`
@@ -1374,6 +1510,7 @@ Update templates to use percentage-based shots and rate cards to include hourly_
 **Step 1: Update template routes**
 
 In `server/src/routes/templates.ts`:
+
 - Change all `quantity` references to `percentage` in INSERT/UPDATE/SELECT queries
 - Template shot creation: `INSERT INTO film_template_shots (template_id, shot_type, percentage, efficiency_multiplier, sort_order)`
 - Template listing: SELECT `percentage` instead of `quantity`
@@ -1381,6 +1518,7 @@ In `server/src/routes/templates.ts`:
 **Step 2: Update rate card routes**
 
 In `server/src/routes/rate-cards.ts`:
+
 - Add `hourly_rate` to INSERT and UPDATE queries for rate_cards
 - Include `hourly_rate` in SELECT queries
 - Default to 125 if not provided
@@ -1408,6 +1546,7 @@ git commit -m "feat: update templates to percentage-based, add hourly_rate to ra
 Create new hooks for developments, projects, and Kantata; update existing hooks.
 
 **Files:**
+
 - Create: `client/src/hooks/useDevelopments.ts`
 - Create: `client/src/hooks/useProjects.ts`
 - Create: `client/src/hooks/useKantata.ts`
@@ -1527,6 +1666,7 @@ git commit -m "feat: add development, project, kantata hooks; update quote/templ
 Update routes and sidebar navigation for the new project-centric structure.
 
 **Files:**
+
 - Modify: `client/src/App.tsx`
 - Modify: `client/src/components/layout/Sidebar.tsx`
 - Create: `client/src/pages/projects/ProjectsHomePage.tsx` (placeholder)
@@ -1574,11 +1714,13 @@ git commit -m "feat: update routing and sidebar for project-centric navigation"
 The main homepage with two cards: Active Projects and Forecasted Projects.
 
 **Files:**
+
 - Modify: `client/src/pages/projects/ProjectsHomePage.tsx`
 
 **Step 1: Implement the page**
 
 Layout:
+
 - PageHeader with "New Project" button
 - Search bar (searches name, development, kantata_id)
 - **"Active Projects" section** — Card grid of `is_forecasted = false` projects
@@ -1592,6 +1734,7 @@ Uses: `useProjects()` hook, `useNavigate()` for clicking cards
 **Step 2: Create NewProjectDialog component**
 
 Multi-step dialog:
+
 1. Pick or create Development (searchable dropdown + "Create new" inline)
 2. Choose type: "Link to Kantata" or "Forecasted"
    - If Kantata: search input using `useKantataSearch`, select workspace
@@ -1616,11 +1759,13 @@ git commit -m "feat: implement ProjectsHomePage with two-card layout and project
 Shows a single project's quotes with creation and status management.
 
 **Files:**
+
 - Modify: `client/src/pages/projects/ProjectDetailPage.tsx`
 
 **Step 1: Implement the page**
 
 Layout:
+
 - Back button to home
 - Project header: name, development name, Kantata ID badge (if linked), "Link to Kantata" button (if forecasted)
 - "New Quote" button
@@ -1630,6 +1775,7 @@ Layout:
 **Step 2: Create NewQuoteDialog**
 
 Simple dialog:
+
 1. Mode toggle: Retainer | Budget
 2. Rate card select (default pre-selected)
 3. Create → navigate to builder
@@ -1656,11 +1802,13 @@ git commit -m "feat: implement ProjectDetailPage with quote list and Kantata lin
 Update for new status system and audit trail.
 
 **Files:**
+
 - Modify: `client/src/pages/quotes/QuoteDetailPage.tsx`
 
 **Step 1: Update status dropdown**
 
 Change valid transitions to new enum:
+
 - draft → negotiating
 - negotiating → awaiting_approval, draft
 - awaiting_approval → confirmed, draft
@@ -1673,11 +1821,13 @@ On the status badge, add a Popover trigger. The popover content renders `quote.s
 ```tsx
 <Popover>
   <PopoverTrigger asChild>
-    <button><Badge variant={statusVariant}>{quote.status}</Badge></button>
+    <button>
+      <Badge variant={statusVariant}>{quote.status}</Badge>
+    </button>
   </PopoverTrigger>
   <PopoverContent>
     <div className="text-sm font-medium mb-2">Status History</div>
-    {statusLog.map(entry => (
+    {statusLog.map((entry) => (
       <div key={entry.id} className="flex flex-col py-1.5 border-b last:border-0">
         <span className="font-medium capitalize">{entry.new_status.replace('_', ' ')}</span>
         <span className="text-xs text-muted-foreground">
@@ -1707,6 +1857,7 @@ git commit -m "feat: update QuoteDetailPage with new statuses and audit trail po
 This is the largest client-side task. Rebuild the builder with dual modes and percentage sliders.
 
 **Files:**
+
 - Rewrite: `client/src/pages/quotes/QuoteBuilderPage.tsx`
 - Rewrite: `client/src/pages/quotes/builder/useBuilderState.ts`
 - Rewrite: `client/src/pages/quotes/builder/ShotBreakdownTable.tsx`
@@ -1725,20 +1876,20 @@ New state shape:
 ```typescript
 interface BuilderShot {
   shot_type: string;
-  percentage: number;         // 0-100
-  quantity: number;            // calculated from percentage or manual
+  percentage: number; // 0-100
+  quantity: number; // calculated from percentage or manual
   base_hours_each: number;
   efficiency_multiplier: number;
   adjusted_hours: number;
   sort_order: number;
   selected: boolean;
-  manualOverride: boolean;     // true if user used +/- to override percentage calc
+  manualOverride: boolean; // true if user used +/- to override percentage calc
 }
 
 interface BuilderState {
   mode: 'retainer' | 'budget';
   duration: number;
-  shotCount: number;           // ceil(duration/4)
+  shotCount: number; // ceil(duration/4)
   shots: BuilderShot[];
   notes: string;
   showPricing: boolean;
@@ -1750,6 +1901,7 @@ interface BuilderState {
 ```
 
 Key behaviors:
+
 - `setDuration(s)`: Updates duration, recalculates `shotCount = ceil(s/4)`, redistributes shot quantities from percentages
 - `setPercentage(index, pct)`: Auto-rebalances other shots to total 100%, recalculates quantities
 - `addShot(type, hours)`: Adds with even percentage split, rebalances
@@ -1759,8 +1911,13 @@ Key behaviors:
 - `setBudgetAmount(amount)`: Calculates `poolBudgetHours = amount / hourlyRate`
 
 **Percentage auto-rebalance algorithm:**
+
 ```typescript
-function rebalancePercentages(shots: BuilderShot[], changedIndex: number, newPct: number): BuilderShot[] {
+function rebalancePercentages(
+  shots: BuilderShot[],
+  changedIndex: number,
+  newPct: number,
+): BuilderShot[] {
   const others = shots.filter((_, i) => i !== changedIndex && !shots[i].manualOverride);
   const othersTotal = others.reduce((s, shot) => s + shot.percentage, 0);
   const remaining = 100 - newPct;
@@ -1827,6 +1984,7 @@ Uses `distributeShotsByPercentage()` from quoteCalc (replicated client-side in a
 ### Step 3: Rebuild ShotRow with percentage slider
 
 Each row now includes:
+
 - Percentage slider (0-100, Radix Slider)
 - Percentage display: "40%"
 - Arrow showing: "→ 6 shots → 24.0 hrs"
@@ -1883,6 +2041,7 @@ Templates now show percentage breakdowns. Applying a template sets slider percen
 ### Step 7: Verify in browser
 
 Run dev server, navigate to a quote builder, test:
+
 - Mode toggle works
 - Duration changes recalculate shot count
 - Sliders auto-rebalance
@@ -1903,6 +2062,7 @@ git commit -m "feat: rebuild quote builder with dual modes, percentage sliders, 
 ## Task 14: Client — Templates Page (Percentage-Based)
 
 **Files:**
+
 - Modify: `client/src/pages/TemplatesPage.tsx`
 
 **Step 1: Update TemplateCard and ShotRow**
@@ -1928,6 +2088,7 @@ git commit -m "feat: convert TemplatesPage to percentage-based shot definitions"
 ## Task 15: Client — Rate Cards Page (Hourly Rate)
 
 **Files:**
+
 - Modify: `client/src/pages/RateCardsPage.tsx`
 
 **Step 1: Add hourly_rate field**
@@ -1950,6 +2111,7 @@ git commit -m "feat: add hourly_rate field to rate cards UI"
 Run the full test suite and fix any breakage.
 
 **Files:**
+
 - All test files
 
 **Step 1: Run full test suite**
@@ -1988,6 +2150,7 @@ npm run dev
 ```
 
 Test all flows:
+
 - Create development
 - Create forecasted project
 - Create Kantata-linked project
@@ -2036,6 +2199,7 @@ Task 17 (Deploy) ← depends on 16
 ```
 
 Parallelizable pairs:
+
 - Tasks 3+4 (calc lib + validation)
 - Tasks 5+7 (dev/project routes + template/ratecard routes)
 - Tasks 10+11 (home page + detail page)

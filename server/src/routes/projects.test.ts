@@ -94,7 +94,9 @@ describe('projects routes', () => {
   });
 
   it('POST /api/projects/:id/link links project to kantata id', async () => {
-    mockDbQuery.mockResolvedValueOnce({ rows: [{ id: 'p1', kantata_id: '23046', is_forecasted: false }] });
+    mockDbQuery.mockResolvedValueOnce({
+      rows: [{ id: 'p1', kantata_id: '23046', is_forecasted: false }],
+    });
 
     const res = await request(app).post('/api/projects/p1/link').send({ kantata_id: '23046' });
     expect(res.status).toBe(200);
