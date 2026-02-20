@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
+
+type QueryResult = { rows: unknown[]; rowCount?: number };
+type TxClient = { query: (...args: unknown[]) => Promise<QueryResult> };
+type TxFn = (client: TxClient) => Promise<unknown>;
 
 const mockDbQuery = vi.fn();
 const mockDbTransaction = vi.fn();
@@ -36,10 +40,19 @@ async function createApp(isAdmin = true) {
 
 describe('quotes routes', () => {
   let app: express.Express;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalDevBypass = process.env.DEV_AUTH_BYPASS;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    process.env.NODE_ENV = originalNodeEnv;
+    process.env.DEV_AUTH_BYPASS = originalDevBypass;
     app = await createApp();
+  });
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+    process.env.DEV_AUTH_BYPASS = originalDevBypass;
   });
 
   it('GET /api/quotes returns list', async () => {
@@ -55,23 +68,22 @@ describe('quotes routes', () => {
   });
 
   it('POST /api/quotes creates quote with project_id + mode', async () => {
-    mockDbTransaction.mockImplementation(async (fn: (client: any) => Promise<unknown>) => {
-      const client = {
-        query: vi
-          .fn()
-          .mockResolvedValueOnce({ rows: [{ id: 'project-1' }] })
-          .mockResolvedValueOnce({
-            rows: [{ hours_per_second: 17.33, editing_hours_per_30s: 100, hourly_rate: 125 }],
-          })
-          .mockResolvedValueOnce({
-            rows: [{ id: 'quote-1', project_id: 'project-1', mode: 'retainer', status: 'draft' }],
-          })
-          .mockResolvedValueOnce({ rows: [{ id: 'log-1', new_status: 'draft' }] })
-          .mockResolvedValueOnce({
-            rows: [{ id: 'version-1', version_number: 1, duration_seconds: 60, shot_count: 15 }],
-          }),
-      };
-      return fn(client);
+    mockDbTransaction.mockImplementation(async (fn: TxFn) => {
+      const query = vi
+        .fn<(...args: unknown[]) => Promise<QueryResult>>()
+        .mockResolvedValueOnce({ rows: [{ id: 'project-1' }] })
+        .mockResolvedValueOnce({
+          rows: [{ hours_per_second: 17.33, editing_hours_per_30s: 100, hourly_rate: 125 }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'quote-1', project_id: 'project-1', mode: 'retainer', status: 'draft' }],
+        })
+        .mockResolvedValueOnce({ rows: [{ id: 'log-1', new_status: 'draft' }] })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'version-1', version_number: 1, duration_seconds: 60, shot_count: 15 }],
+        });
+
+      return fn({ query });
     });
 
     const res = await request(app).post('/api/quotes').send({
@@ -85,35 +97,64 @@ describe('quotes routes', () => {
     expect(res.body.mode).toBe('retainer');
   });
 
-  it('PUT /api/quotes/:id/status rejects invalid transition', async () => {
-    mockDbTransaction.mockImplementation(async (fn: (client: any) => Promise<unknown>) => {
-      const client = {
-        query: vi.fn().mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'draft' }] }),
-      };
-      return fn(client);
+  it('POST /api/quotes uses null created_by during dev auth bypass', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.DEV_AUTH_BYPASS = 'true';
+
+    const query = vi
+      .fn<(...args: unknown[]) => Promise<QueryResult>>()
+      .mockResolvedValueOnce({ rows: [{ id: 'project-1' }] })
+      .mockResolvedValueOnce({
+        rows: [{ hours_per_second: 17.33, editing_hours_per_30s: 100, hourly_rate: 125 }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ id: 'quote-1', project_id: 'project-1', mode: 'retainer', status: 'draft' }],
+      })
+      .mockResolvedValueOnce({ rows: [{ id: 'log-1', new_status: 'draft' }] })
+      .mockResolvedValueOnce({
+        rows: [{ id: 'version-1', version_number: 1, duration_seconds: 60, shot_count: 15 }],
+      });
+
+    mockDbTransaction.mockImplementation(async (fn: TxFn) => fn({ query }));
+
+    const res = await request(app).post('/api/quotes').send({
+      project_id: '550e8400-e29b-41d4-a716-446655440001',
+      mode: 'retainer',
+      rate_card_id: '550e8400-e29b-41d4-a716-446655440000',
     });
 
-    const res = await request(app)
-      .put('/api/quotes/q1/status')
-      .send({ status: 'confirmed' });
+    expect(res.status).toBe(201);
+    const insertQuoteCall = query.mock.calls.find((call) =>
+      String(call[0]).includes('INSERT INTO quotes'),
+    );
+    expect(insertQuoteCall).toBeDefined();
+    const params = insertQuoteCall?.[1] as unknown[];
+    expect(params[3]).toBeNull();
+  });
+
+  it('PUT /api/quotes/:id/status rejects invalid transition', async () => {
+    mockDbTransaction.mockImplementation(async (fn: TxFn) => {
+      const query = vi
+        .fn<(...args: unknown[]) => Promise<QueryResult>>()
+        .mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'draft' }] });
+      return fn({ query });
+    });
+
+    const res = await request(app).put('/api/quotes/q1/status').send({ status: 'confirmed' });
     expect(res.status).toBe(400);
   });
 
   it('PUT /api/quotes/:id/status allows valid transition and logs', async () => {
-    mockDbTransaction.mockImplementation(async (fn: (client: any) => Promise<unknown>) => {
-      const client = {
-        query: vi
-          .fn()
-          .mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'draft' }] })
-          .mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'negotiating' }] })
-          .mockResolvedValueOnce({ rows: [] }),
-      };
-      return fn(client);
+    mockDbTransaction.mockImplementation(async (fn: TxFn) => {
+      const query = vi
+        .fn<(...args: unknown[]) => Promise<QueryResult>>()
+        .mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'draft' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'negotiating' }] })
+        .mockResolvedValueOnce({ rows: [] });
+      return fn({ query });
     });
 
-    const res = await request(app)
-      .put('/api/quotes/q1/status')
-      .send({ status: 'negotiating' });
+    const res = await request(app).put('/api/quotes/q1/status').send({ status: 'negotiating' });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('negotiating');

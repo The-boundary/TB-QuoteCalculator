@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -35,10 +35,19 @@ async function createApp(isAdmin = true) {
 
 describe('rate-cards routes', () => {
   let app: express.Express;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalDevBypass = process.env.DEV_AUTH_BYPASS;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    process.env.NODE_ENV = originalNodeEnv;
+    process.env.DEV_AUTH_BYPASS = originalDevBypass;
     app = await createApp();
+  });
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+    process.env.DEV_AUTH_BYPASS = originalDevBypass;
   });
 
   it('GET /api/rate-cards returns cards', async () => {
@@ -67,6 +76,31 @@ describe('rate-cards routes', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.hourly_rate).toBe(150);
+  });
+
+  it('POST /api/rate-cards uses null created_by during dev auth bypass', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.DEV_AUTH_BYPASS = 'true';
+
+    mockDbQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ id: 'rc1', name: 'Bypass Card', hours_per_second: 10, hourly_rate: 125 }],
+      });
+
+    const res = await request(app).post('/api/rate-cards').send({
+      name: 'Bypass Card',
+      hours_per_second: 10,
+      is_default: true,
+    });
+
+    expect(res.status).toBe(201);
+    const insertCall = mockDbQuery.mock.calls.find((call) =>
+      String(call[0]).includes('INSERT INTO rate_cards'),
+    );
+    expect(insertCall).toBeDefined();
+    const params = insertCall?.[1] as unknown[];
+    expect(params[5]).toBeNull();
   });
 
   it('POST /api/rate-cards rejects non-admin', async () => {
