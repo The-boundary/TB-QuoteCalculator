@@ -12,5 +12,5 @@
     "noEmit": true
   },
   "include": ["src", "../shared"],
-  "exclude": ["../**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "../**/*.test.ts", "../**/*.test.tsx"]
 }
