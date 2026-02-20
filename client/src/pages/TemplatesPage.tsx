@@ -133,7 +133,7 @@ function TemplateCard({
 }) {
   const updateTemplate = useUpdateTemplate();
   const [expanded, setExpanded] = useState(false);
-  const [localShots, setLocalShots] = useState(template.shots);
+  const [localShots, setLocalShots] = useState<FilmTemplateShot[]>(template.shots ?? []);
 
   const updateShot = useCallback(
     (index: number, patch: Partial<FilmTemplateShot>) =>

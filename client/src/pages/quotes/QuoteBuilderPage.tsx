@@ -231,6 +231,7 @@ export function QuoteBuilderPage() {
           onDeselectAll={builder.deselectAll}
           onPercentageChange={builder.setPercentage}
           onUpdateQuantity={builder.updateQuantity}
+          onUnlockManualQuantity={builder.unlockManualQuantity}
           onUpdateEfficiency={builder.updateEfficiency}
           onRemove={builder.removeShot}
           onBatchSetEfficiency={builder.batchSetEfficiency}

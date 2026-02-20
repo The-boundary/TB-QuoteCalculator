@@ -15,6 +15,7 @@ interface ShotBreakdownTableProps {
   onDeselectAll: () => void;
   onPercentageChange: (index: number, percentage: number) => void;
   onUpdateQuantity: (index: number, qty: number) => void;
+  onUnlockManualQuantity: (index: number) => void;
   onUpdateEfficiency: (index: number, multiplier: number) => void;
   onRemove: (index: number) => void;
   onBatchSetEfficiency: (indices: number[], multiplier: number) => void;
@@ -30,6 +31,7 @@ export function ShotBreakdownTable({
   onDeselectAll,
   onPercentageChange,
   onUpdateQuantity,
+  onUnlockManualQuantity,
   onUpdateEfficiency,
   onRemove,
   onBatchSetEfficiency,
@@ -116,11 +118,12 @@ export function ShotBreakdownTable({
                   showPricing={showPricing}
                   hourlyRate={hourlyRate}
                   onToggleSelect={onToggleSelect}
-                  onPercentageChange={onPercentageChange}
-                  onUpdateQuantity={onUpdateQuantity}
-                  onUpdateEfficiency={onUpdateEfficiency}
-                  onRemove={onRemove}
-                />
+                   onPercentageChange={onPercentageChange}
+                   onUpdateQuantity={onUpdateQuantity}
+                    onUnlockManual={onUnlockManualQuantity}
+                    onUpdateEfficiency={onUpdateEfficiency}
+                    onRemove={onRemove}
+                  />
               ))}
             </TableBody>
           </Table>

@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { Routes, Route, Outlet, useLocation } from 'react-router-dom';
+import { AppErrorBoundary } from './components/app/AppErrorBoundary';
 import { AppShell } from './components/layout/AppShell';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
@@ -49,26 +50,30 @@ function AppShellLayout() {
 }
 
 export function App() {
+  const location = useLocation();
+
   return (
-    <Suspense fallback={<RouteFallback />}>
-      <Routes>
-        <Route path="/auth/login" element={<LoginPage />} />
-        <Route element={<ProtectedRoute />}>
-          <Route element={<AppShellLayout />}>
-            <Route path="/" element={<ProjectsHomePage />} />
-            <Route path="/projects/:id" element={<ProjectDetailPage />} />
-            <Route path="/projects/:id/quotes/:quoteId" element={<QuoteDetailPage />} />
-            <Route
-              path="/projects/:id/quotes/:quoteId/versions/:versionId/build"
-              element={<QuoteBuilderPage />}
-            />
-            <Route path="/quotes" element={<QuotesListPage />} />
-            <Route path="/rate-cards" element={<RateCardsPage />} />
-            <Route path="/templates" element={<TemplatesPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+    <AppErrorBoundary resetKey={location.pathname}>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/auth/login" element={<LoginPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppShellLayout />}>
+              <Route path="/" element={<ProjectsHomePage />} />
+              <Route path="/projects/:id" element={<ProjectDetailPage />} />
+              <Route path="/projects/:id/quotes/:quoteId" element={<QuoteDetailPage />} />
+              <Route
+                path="/projects/:id/quotes/:quoteId/versions/:versionId/build"
+                element={<QuoteBuilderPage />}
+              />
+              <Route path="/quotes" element={<QuotesListPage />} />
+              <Route path="/rate-cards" element={<RateCardsPage />} />
+              <Route path="/templates" element={<TemplatesPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
           </Route>
-        </Route>
-      </Routes>
-    </Suspense>
+        </Routes>
+      </Suspense>
+    </AppErrorBoundary>
   );
 }

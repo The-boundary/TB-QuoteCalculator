@@ -305,6 +305,18 @@ export function useBuilderState(
     });
   }, []);
 
+  const unlockManualQuantity = useCallback((index: number) => {
+    setState((prev) => {
+      if (!prev.shots[index]?.manualOverride) return prev;
+
+      const shots = prev.shots.map((shot, idx) =>
+        idx === index ? { ...shot, manualOverride: false } : shot,
+      );
+
+      return { ...prev, shots: rebalance(prev.shotCount, shots) };
+    });
+  }, []);
+
   const updateEfficiency = useCallback((index: number, multiplier: number) => {
     setState((prev) => ({
       ...prev,
@@ -467,6 +479,7 @@ export function useBuilderState(
     setBudgetAmount,
     setPercentage,
     updateQuantity,
+    unlockManualQuantity,
     updateEfficiency,
     batchSetEfficiency,
     addShot,

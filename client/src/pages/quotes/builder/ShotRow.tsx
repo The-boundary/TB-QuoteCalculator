@@ -13,6 +13,7 @@ interface ShotRowProps {
   onToggleSelect: (index: number) => void;
   onPercentageChange: (index: number, percentage: number) => void;
   onUpdateQuantity: (index: number, qty: number) => void;
+  onUnlockManual: (index: number) => void;
   onUpdateEfficiency: (index: number, multiplier: number) => void;
   onRemove: (index: number) => void;
 }
@@ -25,6 +26,7 @@ export const ShotRow = memo(function ShotRow({
   onToggleSelect,
   onPercentageChange,
   onUpdateQuantity,
+  onUnlockManual,
   onUpdateEfficiency,
   onRemove,
 }: ShotRowProps) {
@@ -75,7 +77,19 @@ export const ShotRow = memo(function ShotRow({
             <Plus className="h-3 w-3" />
           </Button>
         </div>
-        {shot.manualOverride && <span className="text-xs text-amber-500">manual</span>}
+        {shot.manualOverride && (
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-xs text-amber-500">manual</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-5 px-2 text-[10px]"
+              onClick={() => onUnlockManual(index)}
+            >
+              auto
+            </Button>
+          </div>
+        )}
       </TableCell>
 
       <TableCell className="tabular-nums text-muted-foreground">
