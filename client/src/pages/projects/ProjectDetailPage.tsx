@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Link as LinkIcon, Plus } from 'lucide-react';
+import { ArrowLeft, Link as LinkIcon, Plus, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useProject } from '@/hooks/useProjects';
+import { useArchiveQuote } from '@/hooks/useQuotes';
 import { LinkToKantataDialog } from './LinkToKantataDialog';
 import { NewQuoteDialog } from './NewQuoteDialog';
 
@@ -20,8 +21,34 @@ export function ProjectDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { data: project, isLoading, error } = useProject(id);
+  const archiveQuote = useArchiveQuote();
   const [newQuoteOpen, setNewQuoteOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [deleteIntent, setDeleteIntent] = useState<{ quoteId: string; clicks: number } | null>(null);
+
+  useEffect(() => {
+    if (!deleteIntent) return;
+    const timer = window.setTimeout(() => setDeleteIntent(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [deleteIntent]);
+
+  function handleDeleteQuote(e: React.MouseEvent<HTMLButtonElement>, quoteId: string) {
+    e.stopPropagation();
+
+    if (!deleteIntent || deleteIntent.quoteId !== quoteId) {
+      setDeleteIntent({ quoteId, clicks: 1 });
+      return;
+    }
+
+    if (deleteIntent.clicks < 2) {
+      setDeleteIntent((prev) => (prev ? { ...prev, clicks: prev.clicks + 1 } : prev));
+      return;
+    }
+
+    archiveQuote.mutate(quoteId, {
+      onSuccess: () => setDeleteIntent(null),
+    });
+  }
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">Loading project...</p>;
@@ -60,38 +87,68 @@ export function ProjectDetailPage() {
       />
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {project.quotes.map((quote) => (
-          <Card
-            key={quote.id}
-            className="cursor-pointer transition-colors hover:border-sb-brand/60"
-            onClick={() => navigate(`/projects/${project.id}/quotes/${quote.id}`)}
-          >
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <Badge variant={quote.mode === 'budget' ? 'info' : 'secondary'}>{quote.mode}</Badge>
-                <Badge
-                  variant={
-                    statusVariant(quote.status) as 'info' | 'secondary' | 'warning' | 'success'
-                  }
-                >
-                  {quote.status.replace(/_/g, ' ')}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-1 text-sm text-muted-foreground">
-              {quote.latest_version ? (
-                <>
-                  <p>v{quote.latest_version.version_number}</p>
-                  <p>{quote.latest_version.duration_seconds}s</p>
-                  <p>{quote.latest_version.total_hours}h</p>
-                </>
-              ) : (
-                <p>No versions yet</p>
-              )}
-              <p>{quote.version_count} versions</p>
-            </CardContent>
-          </Card>
-        ))}
+        {project.quotes.map((quote) => {
+          const deleteClicks = deleteIntent?.quoteId === quote.id ? deleteIntent.clicks : 0;
+          const deleteTitle =
+            deleteClicks === 0
+              ? 'Delete quote'
+              : deleteClicks === 1
+                ? 'Click 2 more times to confirm'
+                : 'Click once more to confirm';
+          const deleteVariant =
+            deleteClicks === 0 ? 'ghost' : deleteClicks === 1 ? 'outline' : 'destructive';
+
+          return (
+            <Card
+              key={quote.id}
+              className="cursor-pointer transition-colors hover:border-sb-brand/60"
+              onClick={() => navigate(`/projects/${project.id}/quotes/${quote.id}`)}
+            >
+              <CardHeader>
+                <div className="flex items-start justify-between gap-2">
+                  <Badge variant={quote.mode === 'budget' ? 'info' : 'secondary'}>{quote.mode}</Badge>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Badge
+                      variant={
+                        statusVariant(quote.status) as 'info' | 'secondary' | 'warning' | 'success'
+                      }
+                    >
+                      {quote.status.replace(/_/g, ' ')}
+                    </Badge>
+                    <Button
+                      size="icon-sm"
+                      variant={deleteVariant as 'ghost' | 'outline' | 'destructive'}
+                      onClick={(e) => handleDeleteQuote(e, quote.id)}
+                      disabled={archiveQuote.isPending}
+                      title={deleteTitle}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+                {deleteClicks > 0 && (
+                  <p className="mt-2 text-xs text-destructive">
+                    {deleteClicks === 1
+                      ? 'Click delete 2 more times to confirm'
+                      : 'Click once more to confirm deletion'}
+                  </p>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-1 text-sm text-muted-foreground">
+                {quote.latest_version ? (
+                  <>
+                    <p>v{quote.latest_version.version_number}</p>
+                    <p>{quote.latest_version.duration_seconds}s</p>
+                    <p>{quote.latest_version.total_hours}h</p>
+                  </>
+                ) : (
+                  <p>No versions yet</p>
+                )}
+                <p>{quote.version_count} versions</p>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {project.quotes.length === 0 && (

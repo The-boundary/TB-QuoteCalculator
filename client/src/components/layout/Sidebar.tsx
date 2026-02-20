@@ -22,7 +22,7 @@ const sections: SidebarSection[] = [
       },
       {
         key: 'quotes-legacy',
-        label: 'Quotes (Legacy)',
+        label: 'Quote List',
         href: '/quotes',
         icon: <FileText className="h-4 w-4" />,
       },

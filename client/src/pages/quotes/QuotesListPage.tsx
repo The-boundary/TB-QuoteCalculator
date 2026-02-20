@@ -49,8 +49,8 @@ export function QuotesListPage() {
   return (
     <>
       <PageHeader
-        title="Quotes"
-        description="Legacy flat quote list"
+        title="Quote List"
+        description="Simple list of all quotes in the database"
         actions={
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4" />

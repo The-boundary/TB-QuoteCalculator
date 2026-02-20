@@ -60,7 +60,7 @@ export function QuoteCard({ quote }: QuoteCardProps) {
             <Button
               size="icon-sm"
               variant={deleteVariant as 'ghost' | 'outline' | 'destructive'}
-              className={`transition-opacity ${deleteClicks === 0 ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}
+              className="opacity-100"
               onClick={handleDelete}
               disabled={deleteQuote.isPending}
               title={deleteClicks === 0 ? 'Delete quote' : deleteLabel}
