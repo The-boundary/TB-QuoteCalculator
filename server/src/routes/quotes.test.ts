@@ -183,4 +183,33 @@ describe('quotes routes', () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.status_log)).toBe(true);
   });
+
+  it('DELETE /api/quotes/:id archives quote and logs status change', async () => {
+    mockDbTransaction.mockImplementation(async (fn: TxFn) => {
+      const query = vi
+        .fn<(...args: unknown[]) => Promise<QueryResult>>()
+        .mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'draft' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'q1', status: 'archived' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'log-1' }] });
+      return fn({ query });
+    });
+
+    const res = await request(app).delete('/api/quotes/q1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('archived');
+  });
+
+  it('DELETE /api/quotes/:id returns 404 for unknown quote', async () => {
+    mockDbTransaction.mockImplementation(async (fn: TxFn) => {
+      const query = vi
+        .fn<(...args: unknown[]) => Promise<QueryResult>>()
+        .mockResolvedValueOnce({ rows: [] });
+      return fn({ query });
+    });
+
+    const res = await request(app).delete('/api/quotes/missing');
+
+    expect(res.status).toBe(404);
+  });
 });
