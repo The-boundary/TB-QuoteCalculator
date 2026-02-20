@@ -5,6 +5,13 @@ import { validate, createTemplateSchema, updateTemplateSchema } from '../lib/val
 
 const router = Router();
 
+function resolveCreatedBy(userId: string): string | null {
+  if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
+    return null;
+  }
+  return userId;
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/templates -- list all templates with shots
 // ---------------------------------------------------------------------------
@@ -76,13 +83,14 @@ router.post('/', async (req: Request, res: Response) => {
     const parsed = validate(createTemplateSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { name, duration_seconds, description, rate_card_id, shots } = parsed.data;
+    const createdBy = resolveCreatedBy(req.user!.id);
 
     const result = await dbTransaction(async (client) => {
       const { rows: tRows } = await client.query(
         `INSERT INTO film_templates (name, duration_seconds, description, rate_card_id, created_by)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
-        [name, duration_seconds, description || null, rate_card_id || null, req.user!.id],
+        [name, duration_seconds, description || null, rate_card_id || null, createdBy],
       );
       const template = tRows[0];
 

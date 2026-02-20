@@ -5,6 +5,13 @@ import { sendNotFound, sendServerError } from '../utils/route-helpers.js';
 
 const router = Router();
 
+function resolveCreatedBy(userId: string): string | null {
+  if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
+    return null;
+  }
+  return userId;
+}
+
 router.get('/', async (req: Request, res: Response) => {
   try {
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
@@ -115,12 +122,13 @@ router.post('/', async (req: Request, res: Response) => {
 
     const { development_id, name, kantata_id } = parsed.data;
     const isForecasted = !kantata_id;
+    const createdBy = resolveCreatedBy(req.user!.id);
 
     const { rows } = await dbQuery(
       `INSERT INTO projects (development_id, name, kantata_id, is_forecasted, created_by)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [development_id, name, kantata_id ?? null, isForecasted, req.user!.id],
+      [development_id, name, kantata_id ?? null, isForecasted, createdBy],
     );
 
     res.status(201).json(rows[0]);

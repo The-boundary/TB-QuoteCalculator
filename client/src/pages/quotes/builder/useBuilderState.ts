@@ -142,12 +142,15 @@ export function useBuilderState(
     const baseShots: BuilderShot[] = existingShots.map((shot, index) => ({
       shot_type: shot.shot_type,
       percentage:
-        shot.percentage ??
-        (shotCount > 0 ? (Math.max(1, shot.quantity) / shotCount) * 100 : 0),
-      quantity: shot.quantity,
-      base_hours_each: shot.base_hours_each,
-      efficiency_multiplier: shot.efficiency_multiplier,
-      adjusted_hours: shot.adjusted_hours,
+        shot.percentage !== undefined && shot.percentage !== null
+          ? Number(shot.percentage)
+          : shotCount > 0
+            ? (Math.max(1, Number(shot.quantity)) / shotCount) * 100
+            : 0,
+      quantity: Number(shot.quantity),
+      base_hours_each: Number(shot.base_hours_each),
+      efficiency_multiplier: Number(shot.efficiency_multiplier),
+      adjusted_hours: Number(shot.adjusted_hours),
       sort_order: shot.sort_order ?? index,
       selected: false,
       manualOverride: false,
@@ -370,16 +373,16 @@ export function useBuilderState(
       const duration = template.duration_seconds;
       const shotCount = calcShotCount(duration);
       const rateMap = new Map(
-        (rateCard?.items ?? []).map((item) => [item.shot_type.toLowerCase(), item.hours]),
+        (rateCard?.items ?? []).map((item) => [item.shot_type.toLowerCase(), Number(item.hours)]),
       );
 
       setState((prev) => {
         const fromTemplate: BuilderShot[] = template.shots.map((shot, index) => ({
           shot_type: shot.shot_type,
-          percentage: shot.percentage,
+          percentage: Number(shot.percentage),
           quantity: 0,
-          base_hours_each: rateMap.get(shot.shot_type.toLowerCase()) ?? 0,
-          efficiency_multiplier: shot.efficiency_multiplier,
+          base_hours_each: Number(rateMap.get(shot.shot_type.toLowerCase()) ?? 0),
+          efficiency_multiplier: Number(shot.efficiency_multiplier),
           adjusted_hours: 0,
           sort_order: index,
           selected: false,

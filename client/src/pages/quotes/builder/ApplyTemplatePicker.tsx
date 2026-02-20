@@ -47,7 +47,7 @@ export function ApplyTemplatePicker({ onApply, open, onOpenChange }: ApplyTempla
             </div>
           ) : (
             sorted.map((t) => {
-              const totalPct = t.shots.reduce((sum, s) => sum + s.percentage, 0);
+              const totalPct = t.shots.reduce((sum, s) => sum + Number(s.percentage), 0);
               return (
                 <button
                   key={t.id}

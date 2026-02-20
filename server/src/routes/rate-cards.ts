@@ -10,6 +10,13 @@ import {
 
 const router = Router();
 
+function resolveCreatedBy(userId: string): string | null {
+  if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
+    return null;
+  }
+  return userId;
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/rate-cards -- list all rate cards
 // ---------------------------------------------------------------------------
@@ -59,6 +66,7 @@ router.post('/', async (req: Request, res: Response) => {
     const parsed = validate(createRateCardSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { name, hours_per_second, editing_hours_per_30s, hourly_rate, is_default } = parsed.data;
+    const createdBy = resolveCreatedBy(req.user.id);
 
     // If setting as default, unset other defaults
     if (is_default) {
@@ -75,7 +83,7 @@ router.post('/', async (req: Request, res: Response) => {
         editing_hours_per_30s ?? 100,
         hourly_rate ?? 125,
         is_default ?? false,
-        req.user.id,
+        createdBy,
       ],
     );
 

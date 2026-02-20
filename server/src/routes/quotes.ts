@@ -23,6 +23,13 @@ import {
 
 const router = Router();
 
+function resolveCreatedBy(userId: string): string | null {
+  if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
+    return null;
+  }
+  return userId;
+}
+
 function canTransitionStatus(current: string, next: string): boolean {
   if (current === next) return true;
   if (current === 'archived') return false;
@@ -194,6 +201,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     const result = await dbTransaction(async (client) => {
       const { project_id, mode, rate_card_id } = parsed.data;
+      const createdBy = resolveCreatedBy(req.user!.id);
 
       const { rows: projectRows } = await client.query('SELECT id FROM projects WHERE id = $1', [
         project_id,
@@ -213,7 +221,7 @@ router.post('/', async (req: Request, res: Response) => {
         `INSERT INTO quotes (project_id, mode, rate_card_id, status, created_by)
          VALUES ($1, $2, $3, 'draft', $4)
          RETURNING *`,
-        [project_id, mode, rate_card_id, req.user!.id],
+        [project_id, mode, rate_card_id, createdBy],
       );
 
       const quote = quoteRows[0];
@@ -259,7 +267,7 @@ router.post('/', async (req: Request, res: Response) => {
           poolAmount,
           editHours,
           hourlyRate,
-          req.user!.id,
+          createdBy,
         ],
       );
 
@@ -389,6 +397,7 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
       );
       const quote = quoteRows[0];
       if (!quote) throw httpError('Quote not found', 404);
+      const createdBy = resolveCreatedBy(req.user!.id);
 
       const { rows: rcRows } = await client.query(
         'SELECT hours_per_second, editing_hours_per_30s, hourly_rate FROM rate_cards WHERE id = $1',
@@ -458,7 +467,7 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
           total_hours,
           hourlyRate,
           parsed.data.notes ?? null,
-          req.user!.id,
+          createdBy,
         ],
       );
 
