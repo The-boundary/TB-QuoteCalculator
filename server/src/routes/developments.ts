@@ -5,16 +5,9 @@ import {
   updateDevelopmentSchema,
   validate,
 } from '../lib/validation.js';
-import { sendNotFound, sendServerError } from '../utils/route-helpers.js';
+import { sendNotFound, sendServerError, resolveCreatedBy } from '../utils/route-helpers.js';
 
 const router = Router();
-
-function resolveCreatedBy(userId: string): string | null {
-  if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
-    return null;
-  }
-  return userId;
-}
 
 router.get('/', async (_req: Request, res: Response) => {
   try {

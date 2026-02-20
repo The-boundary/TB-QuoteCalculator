@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { dbQuery } from '../services/supabase.js';
-import { sendServerError, sendNotFound } from '../utils/route-helpers.js';
+import { sendServerError, sendNotFound, resolveCreatedBy, requireAdmin } from '../utils/route-helpers.js';
 import {
   validate,
   createRateCardSchema,
@@ -10,16 +10,6 @@ import {
 
 const router = Router();
 
-function resolveCreatedBy(userId: string): string | null {
-  if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
-    return null;
-  }
-  return userId;
-}
-
-// ---------------------------------------------------------------------------
-// GET /api/rate-cards -- list all rate cards
-// ---------------------------------------------------------------------------
 router.get('/', async (_req: Request, res: Response) => {
   try {
     const { rows } = await dbQuery(
@@ -31,9 +21,6 @@ router.get('/', async (_req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// GET /api/rate-cards/:id -- get rate card with items
-// ---------------------------------------------------------------------------
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { rows: rcRows } = await dbQuery(
@@ -54,19 +41,14 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/rate-cards -- create rate card (admin only)
-// ---------------------------------------------------------------------------
 router.post('/', async (req: Request, res: Response) => {
   try {
-    if (!req.user?.appAccess?.is_admin) {
-      return res.status(403).json({ error: { message: 'Admin access required' } });
-    }
+    if (requireAdmin(req, res)) return;
 
     const parsed = validate(createRateCardSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { name, hours_per_second, editing_hours_per_30s, hourly_rate, is_default } = parsed.data;
-    const createdBy = resolveCreatedBy(req.user.id);
+    const createdBy = resolveCreatedBy(req.user!.id);
 
     // If setting as default, unset other defaults
     if (is_default) {
@@ -93,14 +75,9 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// PUT /api/rate-cards/:id -- update rate card (admin only)
-// ---------------------------------------------------------------------------
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    if (!req.user?.appAccess?.is_admin) {
-      return res.status(403).json({ error: { message: 'Admin access required' } });
-    }
+    if (requireAdmin(req, res)) return;
 
     const parsed = validate(updateRateCardSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
@@ -130,14 +107,9 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/rate-cards/:id/items -- add item (admin only)
-// ---------------------------------------------------------------------------
 router.post('/:id/items', async (req: Request, res: Response) => {
   try {
-    if (!req.user?.appAccess?.is_admin) {
-      return res.status(403).json({ error: { message: 'Admin access required' } });
-    }
+    if (requireAdmin(req, res)) return;
 
     const parsed = validate(rateCardItemSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
@@ -156,14 +128,9 @@ router.post('/:id/items', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// PUT /api/rate-cards/:id/items/:itemId -- update item (admin only)
-// ---------------------------------------------------------------------------
 router.put('/:id/items/:itemId', async (req: Request, res: Response) => {
   try {
-    if (!req.user?.appAccess?.is_admin) {
-      return res.status(403).json({ error: { message: 'Admin access required' } });
-    }
+    if (requireAdmin(req, res)) return;
 
     const parsed = validate(rateCardItemSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
@@ -184,14 +151,9 @@ router.put('/:id/items/:itemId', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// DELETE /api/rate-cards/:id/items/:itemId -- remove item (admin only)
-// ---------------------------------------------------------------------------
 router.delete('/:id/items/:itemId', async (req: Request, res: Response) => {
   try {
-    if (!req.user?.appAccess?.is_admin) {
-      return res.status(403).json({ error: { message: 'Admin access required' } });
-    }
+    if (requireAdmin(req, res)) return;
 
     await dbQuery(
       `DELETE FROM rate_card_items WHERE id = $1 AND rate_card_id = $2`,

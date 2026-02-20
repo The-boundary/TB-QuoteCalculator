@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import type { PoolClient } from 'pg';
 import { dbQuery, dbTransaction } from '../services/supabase.js';
 import {
   budgetToPoolHours,
@@ -18,17 +19,12 @@ import {
   httpError,
   sendNotFound,
   sendServerError,
-  type HttpError,
+  handleRouteError,
+  resolveCreatedBy,
+  groupByKey,
 } from '../utils/route-helpers.js';
 
 const router = Router();
-
-function resolveCreatedBy(userId: string): string | null {
-  if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
-    return null;
-  }
-  return userId;
-}
 
 function canTransitionStatus(current: string, next: string): boolean {
   if (current === next) return true;
@@ -42,16 +38,26 @@ function canTransitionStatus(current: string, next: string): boolean {
   return false;
 }
 
-function mapShots(
-  shots: Array<{
-    shot_type: string;
-    percentage: number;
-    quantity: number;
-    base_hours_each: number;
-    efficiency_multiplier: number;
-    sort_order?: number;
-  }>,
-) {
+type ShotInput = {
+  shot_type: string;
+  percentage: number;
+  quantity: number;
+  base_hours_each: number;
+  efficiency_multiplier: number;
+  sort_order?: number;
+};
+
+type MappedShot = {
+  shot_type: string;
+  percentage: number;
+  quantity: number;
+  base_hours_each: number;
+  efficiency_multiplier: number;
+  adjusted_hours: number;
+  sort_order: number;
+};
+
+function mapShots(shots: ShotInput[]): MappedShot[] {
   return shots.map((shot, idx) => {
     const efficiency = shot.efficiency_multiplier || 1;
     const quantity = shot.quantity || 1;
@@ -66,6 +72,113 @@ function mapShots(
       sort_order: shot.sort_order ?? idx,
     };
   });
+}
+
+
+/** Calculate pool budget hours and amount for a version. */
+function calculatePoolBudget(
+  mode: string,
+  hourlyRate: number,
+  durationSeconds: number,
+  hoursPerSecond: number,
+  overrides?: {
+    pool_budget_hours?: number | null;
+    pool_budget_amount?: number | null;
+    existing_pool_hours?: number | null;
+    existing_pool_amount?: number | null;
+  },
+): { poolHours: number | null; poolAmount: number | null } {
+  if (mode !== 'budget') return { poolHours: null, poolAmount: null };
+
+  const o = overrides ?? {};
+
+  if (o.pool_budget_hours !== undefined) {
+    const poolHours = o.pool_budget_hours;
+    const poolAmount =
+      o.pool_budget_amount !== undefined
+        ? o.pool_budget_amount
+        : (poolHours ?? 0) * hourlyRate;
+    return { poolHours, poolAmount };
+  }
+
+  if (o.pool_budget_amount !== undefined) {
+    const poolAmount = o.pool_budget_amount;
+    const poolHours = budgetToPoolHours(poolAmount ?? 0, hourlyRate);
+    return { poolHours, poolAmount };
+  }
+
+  // Fallback: use existing values or calculate from rate card
+  const poolHours =
+    o.existing_pool_hours ?? poolBudgetHours(durationSeconds, hoursPerSecond);
+  const poolAmount =
+    o.existing_pool_amount ?? (poolHours !== null ? poolHours * hourlyRate : null);
+  return { poolHours, poolAmount };
+}
+
+/** Insert shot rows for a version and return the created rows. */
+async function insertShots(
+  client: PoolClient,
+  versionId: string,
+  shots: MappedShot[],
+): Promise<unknown[]> {
+  const created: unknown[] = [];
+  for (const shot of shots) {
+    const { rows } = await client.query(
+      `INSERT INTO version_shots (
+         version_id, shot_type, percentage, quantity,
+         base_hours_each, efficiency_multiplier, adjusted_hours, sort_order
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        versionId,
+        shot.shot_type,
+        shot.percentage,
+        shot.quantity,
+        shot.base_hours_each,
+        shot.efficiency_multiplier,
+        shot.adjusted_hours,
+        shot.sort_order,
+      ],
+    );
+    created.push(rows[0]);
+  }
+  return created;
+}
+
+/** Fetch quote with rate card inside a transaction, throwing on not-found. */
+async function fetchQuoteWithRateCard(
+  client: PoolClient,
+  quoteId: string,
+): Promise<{ quote: Record<string, unknown>; rateCard: Record<string, unknown> }> {
+  const { rows: quoteRows } = await client.query(
+    'SELECT id, mode, rate_card_id FROM quotes WHERE id = $1',
+    [quoteId],
+  );
+  const quote = quoteRows[0];
+  if (!quote) throw httpError('Quote not found', 404);
+
+  const { rows: rcRows } = await client.query(
+    'SELECT hours_per_second, editing_hours_per_30s, hourly_rate FROM rate_cards WHERE id = $1',
+    [quote.rate_card_id],
+  );
+  const rateCard = rcRows[0];
+  if (!rateCard) throw httpError('Rate card not found', 400);
+
+  return { quote, rateCard };
+}
+
+/** Touch quote updated_at and optionally update mode. */
+async function touchQuote(
+  client: PoolClient,
+  quoteId: string,
+  newMode?: string,
+  currentMode?: string,
+): Promise<void> {
+  await client.query('UPDATE quotes SET updated_at = NOW() WHERE id = $1', [quoteId]);
+  if (newMode && newMode !== currentMode) {
+    await client.query('UPDATE quotes SET mode = $1 WHERE id = $2', [newMode, quoteId]);
+  }
 }
 
 // GET /api/quotes
@@ -154,12 +267,7 @@ router.get('/:id', async (req: Request, res: Response) => {
           ).rows
         : [];
 
-    const shotsByVersion = new Map<string, typeof allShots>();
-    for (const shot of allShots) {
-      const existing = shotsByVersion.get(shot.version_id);
-      if (existing) existing.push(shot);
-      else shotsByVersion.set(shot.version_id, [shot]);
-    }
+    const shotsByVersion = groupByKey(allShots, 'version_id');
 
     const versionsWithShots = versions.map((version: { id: string }) => ({
       ...version,
@@ -213,7 +321,6 @@ router.post('/', async (req: Request, res: Response) => {
          FROM rate_cards WHERE id = $1`,
         [rate_card_id],
       );
-
       const rateCard = rateCardRows[0];
       if (!rateCard) throw httpError('Invalid rate card', 400);
 
@@ -223,7 +330,6 @@ router.post('/', async (req: Request, res: Response) => {
          RETURNING *`,
         [project_id, mode, rate_card_id, createdBy],
       );
-
       const quote = quoteRows[0];
 
       const { rows: statusRows } = await client.query(
@@ -234,38 +340,29 @@ router.post('/', async (req: Request, res: Response) => {
       );
 
       const durationSeconds = 60;
-      const versionShotCount = shotCount(durationSeconds);
       const hourlyRate = Number(rateCard.hourly_rate ?? 125);
-      const editHours = editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s));
-
-      const poolHours =
-        mode === 'budget'
-          ? poolBudgetHours(durationSeconds, Number(rateCard.hours_per_second))
-          : null;
-      const poolAmount = mode === 'budget' && poolHours !== null ? poolHours * hourlyRate : null;
+      const { poolHours, poolAmount } = calculatePoolBudget(
+        mode,
+        hourlyRate,
+        durationSeconds,
+        Number(rateCard.hours_per_second),
+      );
 
       const { rows: versionRows } = await client.query(
         `INSERT INTO quote_versions (
-            quote_id,
-            version_number,
-            duration_seconds,
-            shot_count,
-            pool_budget_hours,
-            pool_budget_amount,
-            total_hours,
-            hourly_rate,
-            notes,
-            created_by
+            quote_id, version_number, duration_seconds, shot_count,
+            pool_budget_hours, pool_budget_amount, total_hours,
+            hourly_rate, notes, created_by
           )
          VALUES ($1, 1, $2, $3, $4, $5, $6, $7, NULL, $8)
          RETURNING *`,
         [
           quote.id,
           durationSeconds,
-          versionShotCount,
+          shotCount(durationSeconds),
           poolHours,
           poolAmount,
-          editHours,
+          editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s)),
           hourlyRate,
           createdBy,
         ],
@@ -280,14 +377,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     res.status(201).json(result);
   } catch (err) {
-    const httpErr = err as HttpError;
-    if (httpErr.statusCode === 404) {
-      return res.status(404).json({ error: { message: httpErr.message } });
-    }
-    if (httpErr.statusCode === 400) {
-      return res.status(400).json({ error: { message: httpErr.message } });
-    }
-    return sendServerError(res, err, 'Failed to create quote');
+    return handleRouteError(res, err, 'Failed to create quote');
   }
 });
 
@@ -335,14 +425,7 @@ router.put('/:id/status', async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (err) {
-    const httpErr = err as HttpError;
-    if (httpErr.statusCode === 404) {
-      return res.status(404).json({ error: { message: httpErr.message } });
-    }
-    if (httpErr.statusCode === 400) {
-      return res.status(400).json({ error: { message: httpErr.message } });
-    }
-    return sendServerError(res, err, 'Failed to update quote status');
+    return handleRouteError(res, err, 'Failed to update quote status');
   }
 });
 
@@ -374,11 +457,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (err) {
-    const httpErr = err as HttpError;
-    if (httpErr.statusCode === 404) {
-      return res.status(404).json({ error: { message: httpErr.message } });
-    }
-    return sendServerError(res, err, 'Failed to archive quote');
+    return handleRouteError(res, err, 'Failed to archive quote');
   }
 });
 
@@ -391,69 +470,40 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
     }
 
     const result = await dbTransaction(async (client) => {
-      const { rows: quoteRows } = await client.query(
-        'SELECT id, mode, rate_card_id FROM quotes WHERE id = $1',
-        [req.params.id],
-      );
-      const quote = quoteRows[0];
-      if (!quote) throw httpError('Quote not found', 404);
+      const { quote, rateCard } = await fetchQuoteWithRateCard(client, req.params.id);
       const createdBy = resolveCreatedBy(req.user!.id);
-
-      const { rows: rcRows } = await client.query(
-        'SELECT hours_per_second, editing_hours_per_30s, hourly_rate FROM rate_cards WHERE id = $1',
-        [quote.rate_card_id],
-      );
-      const rateCard = rcRows[0];
-      if (!rateCard) throw httpError('Rate card not found', 400);
 
       const { rows: nextRows } = await client.query(
         `SELECT COALESCE(MAX(version_number), 0) + 1 AS next_version
-         FROM quote_versions
-         WHERE quote_id = $1`,
+         FROM quote_versions WHERE quote_id = $1`,
         [req.params.id],
       );
 
       const durationSeconds = parsed.data.duration_seconds;
-      const shot_count = shotCount(durationSeconds);
       const hourlyRate = Number(parsed.data.hourly_rate ?? rateCard.hourly_rate ?? 125);
+      const modeForVersion = parsed.data.mode ?? (quote.mode as string);
 
-      const modeForVersion = parsed.data.mode ?? quote.mode;
-
-      let poolHours: number | null = null;
-      let poolAmount: number | null = null;
-      if (modeForVersion === 'budget') {
-        if (parsed.data.pool_budget_hours !== undefined) {
-          poolHours = parsed.data.pool_budget_hours;
-          poolAmount =
-            parsed.data.pool_budget_amount !== undefined
-              ? parsed.data.pool_budget_amount
-              : (poolHours ?? 0) * hourlyRate;
-        } else if (parsed.data.pool_budget_amount !== undefined) {
-          poolAmount = parsed.data.pool_budget_amount;
-          poolHours = budgetToPoolHours(poolAmount ?? 0, hourlyRate);
-        } else {
-          poolHours = poolBudgetHours(durationSeconds, Number(rateCard.hours_per_second));
-          poolAmount = poolHours * hourlyRate;
-        }
-      }
+      const { poolHours, poolAmount } = calculatePoolBudget(
+        modeForVersion,
+        hourlyRate,
+        durationSeconds,
+        Number(rateCard.hours_per_second),
+        {
+          pool_budget_hours: parsed.data.pool_budget_hours,
+          pool_budget_amount: parsed.data.pool_budget_amount,
+        },
+      );
 
       const shotRows = mapShots(parsed.data.shots ?? []);
-      const shotHours = totalShotHours(shotRows);
-      const editHours = editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s));
-      const total_hours = shotHours + editHours;
+      const total_hours =
+        totalShotHours(shotRows) +
+        editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s));
 
       const { rows: versionRows } = await client.query(
         `INSERT INTO quote_versions (
-            quote_id,
-            version_number,
-            duration_seconds,
-            shot_count,
-            pool_budget_hours,
-            pool_budget_amount,
-            total_hours,
-            hourly_rate,
-            notes,
-            created_by
+            quote_id, version_number, duration_seconds, shot_count,
+            pool_budget_hours, pool_budget_amount, total_hours,
+            hourly_rate, notes, created_by
           )
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
@@ -461,7 +511,7 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
           req.params.id,
           nextRows[0].next_version,
           durationSeconds,
-          shot_count,
+          shotCount(durationSeconds),
           poolHours,
           poolAmount,
           total_hours,
@@ -472,55 +522,16 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
       );
 
       const version = versionRows[0];
-      const createdShots: unknown[] = [];
+      const createdShots = await insertShots(client, version.id, shotRows);
 
-      for (const shot of shotRows) {
-        const { rows } = await client.query(
-          `INSERT INTO version_shots (
-             version_id,
-             shot_type,
-             percentage,
-             quantity,
-             base_hours_each,
-             efficiency_multiplier,
-             adjusted_hours,
-             sort_order
-           )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           RETURNING *`,
-          [
-            version.id,
-            shot.shot_type,
-            shot.percentage,
-            shot.quantity,
-            shot.base_hours_each,
-            shot.efficiency_multiplier,
-            shot.adjusted_hours,
-            shot.sort_order,
-          ],
-        );
-        createdShots.push(rows[0]);
-      }
-
-      await client.query('UPDATE quotes SET updated_at = NOW() WHERE id = $1', [req.params.id]);
-
-      if (modeForVersion !== quote.mode) {
-        await client.query('UPDATE quotes SET mode = $1 WHERE id = $2', [modeForVersion, req.params.id]);
-      }
+      await touchQuote(client, req.params.id, modeForVersion, quote.mode as string);
 
       return { ...version, shots: createdShots };
     });
 
     res.status(201).json(result);
   } catch (err) {
-    const httpErr = err as HttpError;
-    if (httpErr.statusCode === 404) {
-      return res.status(404).json({ error: { message: httpErr.message } });
-    }
-    if (httpErr.statusCode === 400) {
-      return res.status(400).json({ error: { message: httpErr.message } });
-    }
-    return sendServerError(res, err, 'Failed to create version');
+    return handleRouteError(res, err, 'Failed to create version');
   }
 });
 
@@ -533,12 +544,7 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
     }
 
     const result = await dbTransaction(async (client) => {
-      const { rows: quoteRows } = await client.query(
-        'SELECT id, mode, rate_card_id FROM quotes WHERE id = $1',
-        [req.params.id],
-      );
-      const quote = quoteRows[0];
-      if (!quote) throw httpError('Quote not found', 404);
+      const { quote, rateCard } = await fetchQuoteWithRateCard(client, req.params.id);
 
       const { rows: versionRows } = await client.query(
         'SELECT * FROM quote_versions WHERE id = $1 AND quote_id = $2',
@@ -547,118 +553,69 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
       const existingVersion = versionRows[0];
       if (!existingVersion) throw httpError('Version not found', 404);
 
-      const { rows: rcRows } = await client.query(
-        'SELECT hours_per_second, editing_hours_per_30s, hourly_rate FROM rate_cards WHERE id = $1',
-        [quote.rate_card_id],
-      );
-      const rateCard = rcRows[0];
-      if (!rateCard) throw httpError('Rate card not found', 400);
-
       const durationSeconds = parsed.data.duration_seconds ?? existingVersion.duration_seconds;
-      const shot_count = shotCount(durationSeconds);
       const hourlyRate = Number(
         parsed.data.hourly_rate ?? existingVersion.hourly_rate ?? rateCard.hourly_rate ?? 125,
       );
+      const modeForVersion = parsed.data.mode ?? (quote.mode as string);
 
-      let shotRows: ReturnType<typeof mapShots>;
+      // Resolve shots: use provided shots or re-map existing ones
+      let shotRows: MappedShot[];
       if (parsed.data.shots) {
         shotRows = mapShots(parsed.data.shots);
       } else {
         const { rows: existingShots } = await client.query(
           `SELECT shot_type, percentage, quantity, base_hours_each, efficiency_multiplier, sort_order
-           FROM version_shots
-           WHERE version_id = $1
-           ORDER BY sort_order ASC`,
+           FROM version_shots WHERE version_id = $1 ORDER BY sort_order ASC`,
           [req.params.versionId],
         );
         shotRows = mapShots(existingShots);
       }
 
-      const modeForVersion = parsed.data.mode ?? quote.mode;
+      const { poolHours, poolAmount } = calculatePoolBudget(
+        modeForVersion,
+        hourlyRate,
+        durationSeconds,
+        Number(rateCard.hours_per_second),
+        {
+          pool_budget_hours: parsed.data.pool_budget_hours,
+          pool_budget_amount: parsed.data.pool_budget_amount,
+          existing_pool_hours: existingVersion.pool_budget_hours,
+          existing_pool_amount: existingVersion.pool_budget_amount,
+        },
+      );
 
-      let poolHours: number | null = null;
-      let poolAmount: number | null = null;
+      const total_hours =
+        totalShotHours(shotRows) +
+        editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s));
 
-      if (modeForVersion === 'budget') {
-        if (parsed.data.pool_budget_hours !== undefined) {
-          poolHours = parsed.data.pool_budget_hours;
-          poolAmount =
-            parsed.data.pool_budget_amount !== undefined
-              ? parsed.data.pool_budget_amount
-              : (poolHours ?? 0) * hourlyRate;
-        } else if (parsed.data.pool_budget_amount !== undefined) {
-          poolAmount = parsed.data.pool_budget_amount;
-          poolHours = budgetToPoolHours(poolAmount ?? 0, hourlyRate);
-        } else {
-          poolHours =
-            existingVersion.pool_budget_hours ??
-            poolBudgetHours(durationSeconds, Number(rateCard.hours_per_second));
-          poolAmount =
-            existingVersion.pool_budget_amount ?? (poolHours !== null ? poolHours * hourlyRate : null);
-        }
-      }
-
-      const shotHours = totalShotHours(shotRows);
-      const editHours = editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s));
-      const total_hours = shotHours + editHours;
-
+      // Replace shots if new ones provided, otherwise keep existing
+      let persistedShots: unknown[];
       if (parsed.data.shots) {
-        await client.query('DELETE FROM version_shots WHERE version_id = $1', [req.params.versionId]);
-      }
-
-      const persistedShots: unknown[] = [];
-      if (parsed.data.shots) {
-        for (const shot of shotRows) {
-          const { rows } = await client.query(
-            `INSERT INTO version_shots (
-               version_id,
-               shot_type,
-               percentage,
-               quantity,
-               base_hours_each,
-               efficiency_multiplier,
-               adjusted_hours,
-               sort_order
-             )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-             RETURNING *`,
-            [
-              req.params.versionId,
-              shot.shot_type,
-              shot.percentage,
-              shot.quantity,
-              shot.base_hours_each,
-              shot.efficiency_multiplier,
-              shot.adjusted_hours,
-              shot.sort_order,
-            ],
-          );
-          persistedShots.push(rows[0]);
-        }
+        await client.query('DELETE FROM version_shots WHERE version_id = $1', [
+          req.params.versionId,
+        ]);
+        persistedShots = await insertShots(client, req.params.versionId, shotRows);
       } else {
-        const { rows: existingShots } = await client.query(
+        const { rows: existing } = await client.query(
           'SELECT * FROM version_shots WHERE version_id = $1 ORDER BY sort_order ASC',
           [req.params.versionId],
         );
-        persistedShots.push(...existingShots);
+        persistedShots = existing;
       }
 
       const notes = parsed.data.notes !== undefined ? parsed.data.notes : existingVersion.notes;
 
       const { rows: updatedRows } = await client.query(
         `UPDATE quote_versions
-         SET duration_seconds = $1,
-             shot_count = $2,
-             pool_budget_hours = $3,
-             pool_budget_amount = $4,
-             total_hours = $5,
-             hourly_rate = $6,
-             notes = $7
+         SET duration_seconds = $1, shot_count = $2,
+             pool_budget_hours = $3, pool_budget_amount = $4,
+             total_hours = $5, hourly_rate = $6, notes = $7
          WHERE id = $8
          RETURNING *`,
         [
           durationSeconds,
-          shot_count,
+          shotCount(durationSeconds),
           poolHours,
           poolAmount,
           total_hours,
@@ -668,25 +625,14 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
         ],
       );
 
-      await client.query('UPDATE quotes SET updated_at = NOW() WHERE id = $1', [req.params.id]);
-
-      if (modeForVersion !== quote.mode) {
-        await client.query('UPDATE quotes SET mode = $1 WHERE id = $2', [modeForVersion, req.params.id]);
-      }
+      await touchQuote(client, req.params.id, modeForVersion, quote.mode as string);
 
       return { ...updatedRows[0], shots: persistedShots };
     });
 
     res.json(result);
   } catch (err) {
-    const httpErr = err as HttpError;
-    if (httpErr.statusCode === 404) {
-      return res.status(404).json({ error: { message: httpErr.message } });
-    }
-    if (httpErr.statusCode === 400) {
-      return res.status(400).json({ error: { message: httpErr.message } });
-    }
-    return sendServerError(res, err, 'Failed to update version');
+    return handleRouteError(res, err, 'Failed to update version');
   }
 });
 

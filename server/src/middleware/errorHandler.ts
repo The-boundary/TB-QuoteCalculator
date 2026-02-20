@@ -4,7 +4,6 @@ import { config } from '../config.js';
 
 export interface AppError extends Error {
   statusCode?: number;
-  isOperational?: boolean;
 }
 
 export function errorHandler(err: AppError, req: Request, res: Response, _next: NextFunction) {

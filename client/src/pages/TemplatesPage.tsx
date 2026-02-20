@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { calcShotCount } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -23,11 +24,6 @@ import {
   useUpdateTemplate,
 } from '@/hooks/useTemplates';
 import type { FilmTemplateShot, FilmTemplateWithShots } from '../../../shared/types';
-
-function calcShotCount(durationSeconds: number): number {
-  if (durationSeconds <= 15) return 5;
-  return Math.ceil(durationSeconds / 4);
-}
 
 function distributeByPercentage(total: number, shots: FilmTemplateShot[]) {
   const rows = shots.map((shot) => {
@@ -137,6 +133,14 @@ function TemplateCard({
   const [expanded, setExpanded] = useState(false);
   const [localShots, setLocalShots] = useState(template.shots);
 
+  const updateShot = useCallback(
+    (index: number, patch: Partial<FilmTemplateShot>) =>
+      setLocalShots((prev) =>
+        prev.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+      ),
+    [],
+  );
+
   const totalPct = useMemo(
     () => localShots.reduce((sum, shot) => sum + shot.percentage, 0),
     [localShots],
@@ -190,13 +194,7 @@ function TemplateCard({
             <div key={shot.id} className="grid grid-cols-[2fr_1fr_1fr] items-center gap-2">
               <Input
                 value={shot.shot_type}
-                onChange={(event) =>
-                  setLocalShots((prev) =>
-                    prev.map((row, rowIndex) =>
-                      rowIndex === index ? { ...row, shot_type: event.target.value } : row,
-                    ),
-                  )
-                }
+                onChange={(event) => updateShot(index, { shot_type: event.target.value })}
                 disabled={!isAdmin}
               />
               <Input
@@ -206,13 +204,7 @@ function TemplateCard({
                 step={1}
                 value={shot.percentage}
                 onChange={(event) =>
-                  setLocalShots((prev) =>
-                    prev.map((row, rowIndex) =>
-                      rowIndex === index
-                        ? { ...row, percentage: Math.max(0, Number(event.target.value) || 0) }
-                        : row,
-                    ),
-                  )
+                  updateShot(index, { percentage: Math.max(0, Number(event.target.value) || 0) })
                 }
                 disabled={!isAdmin}
               />
@@ -223,13 +215,9 @@ function TemplateCard({
                 step={0.1}
                 value={shot.efficiency_multiplier}
                 onChange={(event) =>
-                  setLocalShots((prev) =>
-                    prev.map((row, rowIndex) =>
-                      rowIndex === index
-                        ? { ...row, efficiency_multiplier: Math.max(0.1, Number(event.target.value) || 1) }
-                        : row,
-                    ),
-                  )
+                  updateShot(index, {
+                    efficiency_multiplier: Math.max(0.1, Number(event.target.value) || 1),
+                  })
                 }
                 disabled={!isAdmin}
               />

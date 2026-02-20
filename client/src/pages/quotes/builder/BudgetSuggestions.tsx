@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Lightbulb } from 'lucide-react';
-import type { RateCardItem } from '../../../../../shared/types';
+import type { RateCardItem } from '@shared/types';
 
 interface BudgetSuggestionsProps {
   remaining: number | null;

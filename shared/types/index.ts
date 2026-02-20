@@ -22,12 +22,6 @@ export interface Project {
   updated_at: string;
 }
 
-export interface ProjectWithDevelopment extends Project {
-  development: Development;
-  quote_count: number;
-  latest_quote_status: QuoteStatus | null;
-}
-
 // Kantata (read-only)
 export interface KantataWorkspace {
   kantata_id: string;

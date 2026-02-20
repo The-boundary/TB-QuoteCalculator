@@ -16,20 +16,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCreateVersion, useQuote, useUpdateQuoteStatus } from '@/hooks/useQuotes';
 import { VersionCard } from './VersionCard';
+import { STATUS_CONFIG } from './statusConfig';
 import type { QuoteStatus } from '../../../../shared/types';
-
-type StatusConfig = {
-  label: string;
-  variant: 'default' | 'secondary' | 'warning' | 'success' | 'info' | 'destructive';
-};
-
-const STATUS_CONFIG: Record<QuoteStatus, StatusConfig> = {
-  draft: { label: 'Draft', variant: 'secondary' },
-  negotiating: { label: 'Negotiating', variant: 'warning' },
-  awaiting_approval: { label: 'Awaiting Approval', variant: 'info' },
-  confirmed: { label: 'Confirmed', variant: 'success' },
-  archived: { label: 'Archived', variant: 'destructive' },
-};
 
 interface Transition {
   target: QuoteStatus;
@@ -61,15 +49,20 @@ export function QuoteDetailPage() {
   const updateStatus = useUpdateQuoteStatus();
   const createVersion = useCreateVersion();
 
+  const sortedVersions = useMemo(
+    () => [...(quote?.versions ?? [])].sort((a, b) => b.version_number - a.version_number),
+    [quote?.versions],
+  );
+
   async function onStatusChange(status: QuoteStatus) {
     if (!quoteId) return;
     await updateStatus.mutateAsync({ id: quoteId, status });
   }
 
   async function onNewVersion() {
-    if (!quote || !quoteId || !projectId || quote.versions.length === 0) return;
+    if (!quote || !quoteId || !projectId || sortedVersions.length === 0) return;
 
-    const latest = [...quote.versions].sort((a, b) => b.version_number - a.version_number)[0];
+    const latest = sortedVersions[0];
     const newVersion = await createVersion.mutateAsync({
       quoteId,
       duration_seconds: latest.duration_seconds,
@@ -88,11 +81,6 @@ export function QuoteDetailPage() {
 
     navigate(`/projects/${projectId}/quotes/${quoteId}/versions/${newVersion.id}/build`);
   }
-
-  const sortedVersions = useMemo(
-    () => [...(quote?.versions ?? [])].sort((a, b) => b.version_number - a.version_number),
-    [quote?.versions],
-  );
 
   if (isLoading) {
     return (
@@ -133,9 +121,9 @@ export function QuoteDetailPage() {
                 <div className="mt-2 space-y-2">
                   {(quote.status_log ?? []).map((entry) => (
                     <div key={entry.id} className="border-b border-border pb-2 last:border-0 last:pb-0">
-                        <div className="text-sm font-medium capitalize">
+                      <div className="text-sm font-medium capitalize">
                         {entry.new_status.replace(/_/g, ' ')}
-                        </div>
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         by {entry.changed_by_email ?? 'Unknown'} ·{' '}
                         {format(new Date(entry.changed_at), 'dd MMM yyyy HH:mm')}

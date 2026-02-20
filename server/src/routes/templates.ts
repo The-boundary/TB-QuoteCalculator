@@ -1,20 +1,13 @@
 import { Router, type Request, type Response } from 'express';
 import { dbQuery, dbTransaction } from '../services/supabase.js';
-import { sendServerError, sendNotFound, httpError, type HttpError } from '../utils/route-helpers.js';
+import {
+  sendServerError, sendNotFound, httpError, handleRouteError,
+  resolveCreatedBy, requireAdmin, groupByKey,
+} from '../utils/route-helpers.js';
 import { validate, createTemplateSchema, updateTemplateSchema } from '../lib/validation.js';
 
 const router = Router();
 
-function resolveCreatedBy(userId: string): string | null {
-  if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
-    return null;
-  }
-  return userId;
-}
-
-// ---------------------------------------------------------------------------
-// GET /api/templates -- list all templates with shots
-// ---------------------------------------------------------------------------
 router.get('/', async (_req: Request, res: Response) => {
   try {
     const { rows: templates } = await dbQuery(
@@ -23,20 +16,13 @@ router.get('/', async (_req: Request, res: Response) => {
 
     if (templates.length === 0) return res.json([]);
 
-    // Batch fetch all shots
     const templateIds = templates.map((t: { id: string }) => t.id);
     const { rows: allShots } = await dbQuery(
       `SELECT * FROM film_template_shots WHERE template_id = ANY($1) ORDER BY sort_order ASC`,
       [templateIds],
     );
 
-    const shotsByTemplate = new Map<string, typeof allShots>();
-    for (const s of allShots) {
-      const existing = shotsByTemplate.get(s.template_id);
-      if (existing) existing.push(s);
-      else shotsByTemplate.set(s.template_id, [s]);
-    }
-
+    const shotsByTemplate = groupByKey(allShots, 'template_id');
     const enriched = templates.map((t: { id: string }) => ({
       ...t,
       shots: shotsByTemplate.get(t.id) || [],
@@ -48,9 +34,6 @@ router.get('/', async (_req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// GET /api/templates/:id -- get template with shots
-// ---------------------------------------------------------------------------
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { rows: tRows } = await dbQuery(
@@ -71,14 +54,9 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/templates -- create template (admin only)
-// ---------------------------------------------------------------------------
 router.post('/', async (req: Request, res: Response) => {
   try {
-    if (!req.user?.appAccess?.is_admin) {
-      return res.status(403).json({ error: { message: 'Admin access required' } });
-    }
+    if (requireAdmin(req, res)) return;
 
     const parsed = validate(createTemplateSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
@@ -117,55 +95,29 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// PUT /api/templates/:id -- update template with shots (admin only)
-// ---------------------------------------------------------------------------
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    if (!req.user?.appAccess?.is_admin) {
-      return res.status(403).json({ error: { message: 'Admin access required' } });
-    }
+    if (requireAdmin(req, res)) return;
 
     const parsed = validate(updateTemplateSchema, req.body);
     if (!parsed.success) return res.status(400).json({ error: { message: parsed.error } });
     const { name, duration_seconds, description, rate_card_id, shots } = parsed.data;
 
     const result = await dbTransaction(async (client) => {
-      // Build dynamic SET clause for optional fields
-      const setClauses: string[] = ['updated_at = NOW()'];
-      const params: unknown[] = [];
-      let paramIdx = 1;
-
-      if (name !== undefined) {
-        setClauses.push(`name = $${paramIdx}`);
-        params.push(name);
-        paramIdx++;
-      }
-      if (duration_seconds !== undefined) {
-        setClauses.push(`duration_seconds = $${paramIdx}`);
-        params.push(duration_seconds);
-        paramIdx++;
-      }
-      if (description !== undefined) {
-        setClauses.push(`description = $${paramIdx}`);
-        params.push(description);
-        paramIdx++;
-      }
-      if (rate_card_id !== undefined) {
-        setClauses.push(`rate_card_id = $${paramIdx}`);
-        params.push(rate_card_id);
-        paramIdx++;
-      }
-
-      params.push(req.params.id);
       const { rows: tRows } = await client.query(
-        `UPDATE film_templates SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
-        params,
+        `UPDATE film_templates
+         SET name = COALESCE($1, name),
+             duration_seconds = COALESCE($2, duration_seconds),
+             description = COALESCE($3, description),
+             rate_card_id = COALESCE($4, rate_card_id),
+             updated_at = NOW()
+         WHERE id = $5
+         RETURNING *`,
+        [name, duration_seconds, description, rate_card_id, req.params.id],
       );
       const template = tRows[0];
       if (!template) throw httpError('Template not found', 404);
 
-      // Replace shots if provided
       let updatedShots: unknown[] = [];
       if (shots !== undefined) {
         await client.query(
@@ -173,20 +125,17 @@ router.put('/:id', async (req: Request, res: Response) => {
           [req.params.id],
         );
 
-        if (shots.length > 0) {
-          for (let idx = 0; idx < shots.length; idx++) {
-            const s = shots[idx];
-            const { rows } = await client.query(
-              `INSERT INTO film_template_shots (template_id, shot_type, percentage, efficiency_multiplier, sort_order)
-               VALUES ($1, $2, $3, $4, $5)
-               RETURNING *`,
-              [req.params.id, s.shot_type, s.percentage, s.efficiency_multiplier, s.sort_order ?? idx],
-            );
-            updatedShots.push(rows[0]);
-          }
+        for (let idx = 0; idx < shots.length; idx++) {
+          const s = shots[idx];
+          const { rows } = await client.query(
+            `INSERT INTO film_template_shots (template_id, shot_type, percentage, efficiency_multiplier, sort_order)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING *`,
+            [req.params.id, s.shot_type, s.percentage, s.efficiency_multiplier, s.sort_order ?? idx],
+          );
+          updatedShots.push(rows[0]);
         }
       } else {
-        // Return existing shots
         const { rows: existingShots } = await client.query(
           `SELECT * FROM film_template_shots WHERE template_id = $1 ORDER BY sort_order`,
           [req.params.id],
@@ -199,22 +148,13 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (err) {
-    const httpErr = err as HttpError;
-    if (httpErr.statusCode === 404) {
-      return res.status(404).json({ error: { message: httpErr.message } });
-    }
-    return sendServerError(res, err, 'Failed to update template');
+    return handleRouteError(res, err, 'Failed to update template');
   }
 });
 
-// ---------------------------------------------------------------------------
-// DELETE /api/templates/:id -- delete template (admin only)
-// ---------------------------------------------------------------------------
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    if (!req.user?.appAccess?.is_admin) {
-      return res.status(403).json({ error: { message: 'Admin access required' } });
-    }
+    if (requireAdmin(req, res)) return;
 
     await dbQuery(
       `DELETE FROM film_templates WHERE id = $1`,

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Minus, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +17,7 @@ interface ShotRowProps {
   onRemove: (index: number) => void;
 }
 
-export function ShotRow({
+export const ShotRow = memo(function ShotRow({
   shot,
   index,
   showPricing,
@@ -27,8 +28,6 @@ export function ShotRow({
   onUpdateEfficiency,
   onRemove,
 }: ShotRowProps) {
-  const totalCost = shot.adjusted_hours * hourlyRate;
-
   return (
     <TableRow>
       <TableCell className="w-10">
@@ -92,7 +91,9 @@ export function ShotRow({
       <TableCell className="tabular-nums font-medium">
         {shot.adjusted_hours.toFixed(1)}h
         {showPricing && (
-          <span className="ml-1 text-xs text-muted-foreground">(${totalCost.toFixed(0)})</span>
+          <span className="ml-1 text-xs text-muted-foreground">
+            (${(shot.adjusted_hours * hourlyRate).toFixed(0)})
+          </span>
         )}
       </TableCell>
 
@@ -103,4 +104,4 @@ export function ShotRow({
       </TableCell>
     </TableRow>
   );
-}
+});

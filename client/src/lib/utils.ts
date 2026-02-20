@@ -5,6 +5,12 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Calculate the number of shots for a given film duration. */
+export function calcShotCount(durationSeconds: number): number {
+  if (durationSeconds <= 15) return 5;
+  return Math.ceil(durationSeconds / 4);
+}
+
 export function formatDuration(seconds: number): string {
   if (seconds >= 60) {
     const mins = Math.floor(seconds / 60);

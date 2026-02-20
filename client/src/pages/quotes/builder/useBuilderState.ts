@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
+import { calcShotCount } from '@/lib/utils';
 import type {
   FilmTemplateWithShots,
   QuoteMode,
   QuoteVersionWithShots,
   RateCardWithItems,
-} from '../../../../../shared/types';
+} from '@shared/types';
 
 export interface BuilderShot {
   shot_type: string;
@@ -28,11 +29,6 @@ interface BuilderState {
   hourlyRate: number;
   budgetAmount: number | null;
   poolBudgetHours: number | null;
-}
-
-function calcShotCount(durationSeconds: number): number {
-  if (durationSeconds <= 15) return 5;
-  return Math.ceil(durationSeconds / 4);
 }
 
 function normalizePercentages(shots: BuilderShot[]): BuilderShot[] {
@@ -128,6 +124,21 @@ function distributeShotsByPercentage(totalShots: number, shots: BuilderShot[]): 
   });
 }
 
+/** Normalize percentages then distribute shots -- the common pipeline used by most mutations. */
+function rebalance(shotCount: number, shots: BuilderShot[]): BuilderShot[] {
+  return distributeShotsByPercentage(shotCount, normalizePercentages(shots));
+}
+
+/** Clamp efficiency to [0.1, 5] and recalculate adjusted_hours. */
+function applyShotEfficiency(shot: BuilderShot, multiplier: number): BuilderShot {
+  const clamped = Math.max(0.1, Math.min(5, multiplier));
+  return {
+    ...shot,
+    efficiency_multiplier: clamped,
+    adjusted_hours: shot.quantity * shot.base_hours_each * clamped,
+  };
+}
+
 export function useBuilderState(
   rateCard: RateCardWithItems | undefined,
   existingVersion: QuoteVersionWithShots | undefined,
@@ -156,8 +167,7 @@ export function useBuilderState(
       manualOverride: false,
     }));
 
-    const normalized = normalizePercentages(baseShots);
-    const distributed = distributeShotsByPercentage(shotCount, normalized);
+    const distributed = rebalance(shotCount, baseShots);
 
     const budgetHours =
       quoteMode === 'budget'
@@ -193,7 +203,7 @@ export function useBuilderState(
     [state.shots],
   );
 
-  const totalHours = useMemo(() => totalShotHours + editingHours, [totalShotHours, editingHours]);
+  const totalHours = totalShotHours + editingHours;
 
   const effectivePoolBudgetHours = useMemo(() => {
     if (state.mode !== 'budget') return null;
@@ -207,10 +217,8 @@ export function useBuilderState(
     return effectivePoolBudgetHours !== null ? effectivePoolBudgetHours * state.hourlyRate : null;
   }, [state.mode, state.budgetAmount, effectivePoolBudgetHours, state.hourlyRate]);
 
-  const remaining = useMemo(() => {
-    if (effectivePoolBudgetHours === null) return null;
-    return effectivePoolBudgetHours - totalHours;
-  }, [effectivePoolBudgetHours, totalHours]);
+  const remaining =
+    effectivePoolBudgetHours !== null ? effectivePoolBudgetHours - totalHours : null;
 
   const setMode = useCallback((mode: QuoteMode) => {
     setState((prev) => ({
@@ -225,26 +233,22 @@ export function useBuilderState(
     setState((prev) => ({ ...prev, showPricing }));
   }, []);
 
-  const setDuration = useCallback((duration: number) => {
-    setState((prev) => {
-      const shotCount = calcShotCount(duration);
-      const normalized = normalizePercentages(prev.shots);
-      const shots = distributeShotsByPercentage(shotCount, normalized);
+  const setDuration = useCallback(
+    (duration: number) => {
+      setState((prev) => {
+        const shotCount = calcShotCount(duration);
+        const shots = rebalance(shotCount, prev.shots);
 
-      const poolBudgetHours =
-        prev.mode === 'budget' && prev.budgetAmount === null
-          ? duration * (rateCard?.hours_per_second ?? 0)
-          : prev.poolBudgetHours;
+        const poolBudgetHours =
+          prev.mode === 'budget' && prev.budgetAmount === null
+            ? duration * (rateCard?.hours_per_second ?? 0)
+            : prev.poolBudgetHours;
 
-      return {
-        ...prev,
-        duration,
-        shotCount,
-        shots,
-        poolBudgetHours,
-      };
-    });
-  }, [rateCard?.hours_per_second]);
+        return { ...prev, duration, shotCount, shots, poolBudgetHours };
+      });
+    },
+    [rateCard?.hours_per_second],
+  );
 
   const setHourlyRate = useCallback((hourlyRate: number) => {
     setState((prev) => ({ ...prev, hourlyRate: Math.max(0, hourlyRate) }));
@@ -285,11 +289,7 @@ export function useBuilderState(
         return { ...shot, percentage: (shot.percentage / adjustableTotal) * available };
       });
 
-      const normalized = normalizePercentages(rebalanced);
-      return {
-        ...prev,
-        shots: distributeShotsByPercentage(prev.shotCount, normalized),
-      };
+      return { ...prev, shots: rebalance(prev.shotCount, rebalanced) };
     });
   }, []);
 
@@ -301,70 +301,58 @@ export function useBuilderState(
         const percentage = prev.shotCount > 0 ? (nextQty / prev.shotCount) * 100 : 0;
         return { ...shot, quantity: nextQty, percentage, manualOverride: true };
       });
-      const normalized = normalizePercentages(shots);
-      return { ...prev, shots: distributeShotsByPercentage(prev.shotCount, normalized) };
+      return { ...prev, shots: rebalance(prev.shotCount, shots) };
     });
   }, []);
 
   const updateEfficiency = useCallback((index: number, multiplier: number) => {
-    setState((prev) => {
-      const next = Math.max(0.1, Math.min(5, multiplier));
-      const shots = prev.shots.map((shot, idx) => {
-        if (idx !== index) return shot;
-        const adjusted_hours = shot.quantity * shot.base_hours_each * next;
-        return { ...shot, efficiency_multiplier: next, adjusted_hours };
-      });
-      return { ...prev, shots };
-    });
+    setState((prev) => ({
+      ...prev,
+      shots: prev.shots.map((shot, idx) =>
+        idx === index ? applyShotEfficiency(shot, multiplier) : shot,
+      ),
+    }));
   }, []);
 
   const batchSetEfficiency = useCallback((indices: number[], multiplier: number) => {
-    setState((prev) => {
-      const next = Math.max(0.1, Math.min(5, multiplier));
-      const set = new Set(indices);
-      const shots = prev.shots.map((shot, index) => {
-        if (!set.has(index)) return shot;
-        const adjusted_hours = shot.quantity * shot.base_hours_each * next;
-        return { ...shot, efficiency_multiplier: next, adjusted_hours };
-      });
-      return { ...prev, shots };
-    });
+    const targetSet = new Set(indices);
+    setState((prev) => ({
+      ...prev,
+      shots: prev.shots.map((shot, idx) =>
+        targetSet.has(idx) ? applyShotEfficiency(shot, multiplier) : shot,
+      ),
+    }));
   }, []);
 
   const addShot = useCallback((shotType: string, baseHours: number) => {
     setState((prev) => {
-      const nextShots = [
-        ...prev.shots,
-        {
-          shot_type: shotType,
-          percentage: 0,
-          quantity: 0,
-          base_hours_each: baseHours,
-          efficiency_multiplier: 1,
-          adjusted_hours: 0,
-          sort_order: prev.shots.length,
-          selected: false,
-          manualOverride: false,
-        },
-      ];
+      const newShot: BuilderShot = {
+        shot_type: shotType,
+        percentage: 0,
+        quantity: 0,
+        base_hours_each: baseHours,
+        efficiency_multiplier: 1,
+        adjusted_hours: 0,
+        sort_order: prev.shots.length,
+        selected: false,
+        manualOverride: false,
+      };
 
-      const equalPct = nextShots.length > 0 ? 100 / nextShots.length : 0;
+      const nextShots = [...prev.shots, newShot];
+      const equalPct = 100 / nextShots.length;
       const spread = nextShots.map((shot) =>
         shot.manualOverride ? shot : { ...shot, percentage: equalPct },
       );
-      const normalized = normalizePercentages(spread);
-      return { ...prev, shots: distributeShotsByPercentage(prev.shotCount, normalized) };
+      return { ...prev, shots: rebalance(prev.shotCount, spread) };
     });
   }, []);
 
   const removeShot = useCallback((index: number) => {
     setState((prev) => {
-      const shots = prev.shots.filter((_, idx) => idx !== index).map((shot, idx) => ({
-        ...shot,
-        sort_order: idx,
-      }));
-      const normalized = normalizePercentages(shots);
-      return { ...prev, shots: distributeShotsByPercentage(prev.shotCount, normalized) };
+      const shots = prev.shots
+        .filter((_, idx) => idx !== index)
+        .map((shot, idx) => ({ ...shot, sort_order: idx }));
+      return { ...prev, shots: rebalance(prev.shotCount, shots) };
     });
   }, []);
 
@@ -389,21 +377,14 @@ export function useBuilderState(
           manualOverride: false,
         }));
 
-        const normalized = normalizePercentages(fromTemplate);
-        const distributed = distributeShotsByPercentage(shotCount, normalized);
+        const distributed = rebalance(shotCount, fromTemplate);
 
         const poolBudgetHours =
           prev.mode === 'budget' && prev.budgetAmount === null
             ? duration * (rateCard?.hours_per_second ?? 0)
             : prev.poolBudgetHours;
 
-        return {
-          ...prev,
-          duration,
-          shotCount,
-          shots: distributed,
-          poolBudgetHours,
-        };
+        return { ...prev, duration, shotCount, shots: distributed, poolBudgetHours };
       });
     },
     [rateCard?.items, rateCard?.hours_per_second],
@@ -436,8 +417,8 @@ export function useBuilderState(
     }));
   }, []);
 
-  const getPayload = useCallback(() => {
-    return {
+  const payload = useMemo(
+    () => ({
       mode: state.mode,
       duration_seconds: state.duration,
       hourly_rate: state.hourlyRate,
@@ -452,16 +433,17 @@ export function useBuilderState(
         efficiency_multiplier: shot.efficiency_multiplier,
         sort_order: index,
       })),
-    };
-  }, [
-    state.duration,
-    state.hourlyRate,
-    state.mode,
-    state.notes,
-    state.shots,
-    effectivePoolBudgetHours,
-    effectiveBudgetAmount,
-  ]);
+    }),
+    [
+      state.duration,
+      state.hourlyRate,
+      state.mode,
+      state.notes,
+      state.shots,
+      effectivePoolBudgetHours,
+      effectiveBudgetAmount,
+    ],
+  );
 
   return {
     mode: state.mode,
@@ -473,7 +455,6 @@ export function useBuilderState(
     hourlyRate: state.hourlyRate,
     budgetAmount: state.mode === 'budget' ? effectiveBudgetAmount : null,
     poolBudgetHours: effectivePoolBudgetHours,
-    poolBudgetAmount: effectiveBudgetAmount,
     editingHours,
     editingHoursPer30s,
     totalShotHours,
@@ -495,6 +476,6 @@ export function useBuilderState(
     toggleShotSelection,
     selectAll,
     deselectAll,
-    getPayload,
+    payload,
   };
 }

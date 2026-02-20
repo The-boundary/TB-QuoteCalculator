@@ -24,6 +24,8 @@ declare global {
   }
 }
 
+const SERVICE_TOKEN = process.env.SERVICE_API_TOKEN;
+
 const ALLOWED_DOMAINS = (process.env.GOOGLE_WORKSPACE_DOMAIN || 'the-boundary.com')
   .split(',')
   .map((d) => d.trim().toLowerCase())
@@ -100,7 +102,6 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
   }
 
   // Service token auth
-  const serviceTokenEnv = process.env.SERVICE_API_TOKEN;
   const rawServiceToken = (req.headers['x-service-api-token'] ||
     req.headers['x-service-token'] ||
     req.headers['service-api-token']) as string | string[] | undefined;
@@ -108,7 +109,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     ? rawServiceToken[0]
     : rawServiceToken;
 
-  if (serviceTokenEnv && providedServiceToken === serviceTokenEnv) {
+  if (SERVICE_TOKEN && providedServiceToken === SERVICE_TOKEN) {
     req.user = {
       id: '00000000-0000-0000-0000-000000000001',
       email: 'service@local.internal',

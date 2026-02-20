@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Film, Clock } from 'lucide-react';
 import { formatDuration } from '@/lib/utils';
 import { useTemplates } from '@/hooks/useTemplates';
-import type { FilmTemplateWithShots } from '../../../../../shared/types';
+import type { FilmTemplateWithShots } from '@shared/types';
 
 interface ApplyTemplatePickerProps {
   onApply: (template: FilmTemplateWithShots) => void;

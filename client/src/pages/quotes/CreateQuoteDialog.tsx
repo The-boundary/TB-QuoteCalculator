@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
@@ -37,35 +37,27 @@ export function CreateQuoteDialog({ open, onOpenChange }: CreateQuoteDialogProps
   const [rateCardId, setRateCardId] = useState('');
   const [mode, setMode] = useState<QuoteMode>('retainer');
 
-  const defaultProjectId = useMemo(() => projects?.[0]?.id ?? '', [projects]);
-  const defaultRateCardId = useMemo(
-    () => rateCards?.find((rateCard) => rateCard.is_default)?.id ?? rateCards?.[0]?.id ?? '',
-    [rateCards],
-  );
-
   useEffect(() => {
     if (!open) return;
-    setProjectId(defaultProjectId);
-    setRateCardId(defaultRateCardId);
+    setProjectId(projects?.[0]?.id ?? '');
+    setRateCardId(rateCards?.find((rc) => rc.is_default)?.id ?? rateCards?.[0]?.id ?? '');
     setMode('retainer');
-  }, [open, defaultProjectId, defaultRateCardId]);
+  }, [open, projects, rateCards]);
 
-  const finalProjectId = projectId || defaultProjectId;
-  const finalRateCardId = rateCardId || defaultRateCardId;
-  const canSubmit = Boolean(finalProjectId && finalRateCardId);
+  const canSubmit = Boolean(projectId && rateCardId);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!canSubmit) return;
 
     const quote = await createQuote.mutateAsync({
-      project_id: finalProjectId,
+      project_id: projectId,
       mode,
-      rate_card_id: finalRateCardId,
+      rate_card_id: rateCardId,
     });
 
     onOpenChange(false);
-    navigate(`/projects/${finalProjectId}/quotes/${quote.id}`);
+    navigate(`/projects/${projectId}/quotes/${quote.id}`);
   }
 
   return (
@@ -80,7 +72,7 @@ export function CreateQuoteDialog({ open, onOpenChange }: CreateQuoteDialogProps
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label>Project</Label>
-              <Select value={finalProjectId} onValueChange={setProjectId}>
+              <Select value={projectId} onValueChange={setProjectId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select project" />
                 </SelectTrigger>
@@ -116,7 +108,7 @@ export function CreateQuoteDialog({ open, onOpenChange }: CreateQuoteDialogProps
 
             <div className="grid gap-2">
               <Label>Rate Card</Label>
-              <Select value={finalRateCardId} onValueChange={setRateCardId}>
+              <Select value={rateCardId} onValueChange={setRateCardId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select rate card" />
                 </SelectTrigger>

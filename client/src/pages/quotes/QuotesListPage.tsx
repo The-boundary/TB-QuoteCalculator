@@ -29,21 +29,19 @@ export function QuotesListPage() {
     if (!quotes) return [];
     let result = quotes;
 
-    // Status filter
     if (statusFilter !== 'all') {
       result = result.filter((q) => q.status === statusFilter);
     }
 
-    // Search filter
     const term = search.toLowerCase().trim();
     if (term) {
-        result = result.filter(
-          (q) =>
-            q.project_name.toLowerCase().includes(term) ||
-            q.development_name.toLowerCase().includes(term) ||
-            (q.kantata_id ?? '').includes(term),
-        );
-      }
+      result = result.filter(
+        (q) =>
+          q.project_name.toLowerCase().includes(term) ||
+          q.development_name.toLowerCase().includes(term) ||
+          (q.kantata_id ?? '').includes(term),
+      );
+    }
 
     return result;
   }, [quotes, statusFilter, search]);
@@ -61,7 +59,6 @@ export function QuotesListPage() {
         }
       />
 
-      {/* Filters */}
       <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative max-w-sm w-full">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -87,7 +84,6 @@ export function QuotesListPage() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="mt-6">
         {isLoading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

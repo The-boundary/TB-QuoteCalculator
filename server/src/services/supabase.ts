@@ -3,9 +3,7 @@ import pg from 'pg';
 
 import { logger } from '../utils/logger.js';
 
-// ============================================================
 // Supabase REST client (tower_watch schema — for TowerWatch auth)
-// ============================================================
 
 type AnySupabaseClient = SupabaseClient<any, any, any>;
 
@@ -25,9 +23,7 @@ export function getAuthSupabaseClient(): AnySupabaseClient | null {
   return authSupabase;
 }
 
-// ============================================================
 // Direct Postgres pool (quote_calculator schema)
-// ============================================================
 
 const SCHEMA = 'quote_calculator';
 

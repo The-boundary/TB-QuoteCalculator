@@ -100,16 +100,13 @@ export function Sidebar() {
   const displayName = useMemo(() => getDisplayName(user), [user]);
   const email = user?.email ?? '';
   const userInfo = useMemo(() => ({ name: displayName, email }), [displayName, email]);
-  const handleNavigateSettings = useCallback(() => {
-    navigate('/settings');
-  }, [navigate]);
 
   const userActions: SidebarUserAction[] = useMemo(
     () => [
-      { key: 'settings', label: 'Settings', icon: Settings, onSelect: handleNavigateSettings },
+      { key: 'settings', label: 'Settings', icon: Settings, onSelect: () => navigate('/settings') },
       { key: 'logout', label: 'Log out', icon: LogOut, onSelect: handleSignOut },
     ],
-    [handleNavigateSettings, handleSignOut],
+    [navigate, handleSignOut],
   );
 
   return (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
@@ -6,18 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/utils';
 import { useArchiveQuote, type QuoteListItem } from '@/hooks/useQuotes';
-import type { QuoteStatus } from '../../../../shared/types';
-
-const STATUS_CONFIG: Record<
-  QuoteStatus,
-  { label: string; variant: 'secondary' | 'warning' | 'success' | 'info' | 'outline' }
-> = {
-  draft: { label: 'Draft', variant: 'secondary' },
-  negotiating: { label: 'Negotiating', variant: 'warning' },
-  awaiting_approval: { label: 'Awaiting Approval', variant: 'info' },
-  confirmed: { label: 'Confirmed', variant: 'success' },
-  archived: { label: 'Archived', variant: 'outline' },
-};
+import { STATUS_CONFIG } from './statusConfig';
 
 interface QuoteCardProps {
   quote: QuoteListItem;
@@ -38,18 +27,14 @@ export function QuoteCard({ quote }: QuoteCardProps) {
     return () => clearTimeout(timer);
   }, [deleteClicks]);
 
-  const handleDelete = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (deleteClicks < 2) {
-        setDeleteClicks((prev) => prev + 1);
-      } else {
-        // Third click — actually delete
-        deleteQuote.mutate(quote.id);
-      }
-    },
-    [deleteClicks, deleteQuote, quote.id],
-  );
+  function handleDelete(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (deleteClicks < 2) {
+      setDeleteClicks((prev) => prev + 1);
+    } else {
+      deleteQuote.mutate(quote.id);
+    }
+  }
 
   const deleteLabel =
     deleteClicks === 0 ? undefined : deleteClicks === 1 ? 'Click 2 more' : 'Click to confirm';

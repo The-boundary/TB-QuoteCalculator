@@ -52,23 +52,22 @@ export function QuoteBuilderPage() {
     if (!quoteId) return;
     setSaving(true);
     try {
-      const payload = builder.getPayload();
       if (versionId) {
         await updateVersion.mutateAsync({
           quoteId,
           versionId,
-          ...payload,
+          ...builder.payload,
         });
       } else {
         await createVersion.mutateAsync({
           quoteId,
-          ...payload,
+          ...builder.payload,
         });
       }
     } finally {
       setSaving(false);
     }
-  }, [builder, quoteId, versionId, updateVersion, createVersion]);
+  }, [builder.payload, quoteId, versionId, updateVersion, createVersion]);
 
   const saveAndClose = useCallback(async () => {
     await saveVersion();

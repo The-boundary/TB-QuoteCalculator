@@ -20,18 +20,14 @@ export function PostProductionSection({
           Post-Production (Editing)
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-sm">
-              Editing ({duration}s film) ={' '}
-              <span className="font-medium text-foreground">{editingHours.toFixed(1)} hrs</span>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Auto-calculated at {editingHoursPer30s} hrs per 30s
-            </p>
-          </div>
-        </div>
+      <CardContent className="space-y-1">
+        <p className="text-sm">
+          Editing ({duration}s film) ={' '}
+          <span className="font-medium text-foreground">{editingHours.toFixed(1)} hrs</span>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Auto-calculated at {editingHoursPer30s} hrs per 30s
+        </p>
       </CardContent>
     </Card>
   );
