@@ -1,4 +1,4 @@
-# TB-QuoteCalculator
+# MC-QuoteCalculator
 
 Film production quote calculator for estimating hours and costs per shot type.
 

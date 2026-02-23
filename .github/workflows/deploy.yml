@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/the-boundary/tb-quotecalculator
+  IMAGE_NAME: ghcr.io/the-boundary/mc-quotecalculator
 
 jobs:
   validate:

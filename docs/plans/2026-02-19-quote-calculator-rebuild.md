@@ -654,7 +654,7 @@ migrate();
 **Step 2: Run the migration on the dev database**
 
 ```bash
-cd /home/stan/Desktop/the-boundary/TB-QuoteCalculator
+cd /home/stan/Desktop/the-boundary/MC-QuoteCalculator
 SUPABASE_DATABASE_URL="postgresql://postgres:<password>@192.168.0.74:5433/postgres" npx tsx server/src/scripts/migrate-v2.ts
 ```
 
