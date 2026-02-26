@@ -57,11 +57,11 @@ type MappedShot = {
   sort_order: number;
 };
 
-function mapShots(shots: ShotInput[]): MappedShot[] {
+export function mapShots(shots: ShotInput[]): MappedShot[] {
   return shots.map((shot, idx) => {
-    const efficiency = shot.efficiency_multiplier || 1;
-    const quantity = shot.quantity || 1;
-    const baseHours = shot.base_hours_each || 0;
+    const efficiency = shot.efficiency_multiplier ?? 1;
+    const quantity = shot.quantity ?? 0;
+    const baseHours = shot.base_hours_each ?? 0;
     return {
       shot_type: shot.shot_type,
       percentage: shot.percentage ?? 0,

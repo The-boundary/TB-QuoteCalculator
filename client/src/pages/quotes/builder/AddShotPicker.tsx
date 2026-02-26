@@ -44,7 +44,7 @@ export function AddShotPicker({
   }, [rateCardItems]);
 
   function handleAdd(item: RateCardItemLike) {
-    onAdd(item.shot_type, item.hours);
+    onAdd(item.shot_type, Number(item.hours));
     onOpenChange(false);
   }
 

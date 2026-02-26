@@ -39,7 +39,7 @@ export const updateStatusSchema = z.object({
 export const shotSchema = z.object({
   shot_type: z.string().min(1).max(200),
   percentage: z.number().min(0).max(100),
-  quantity: z.number().int().min(1).max(9999),
+  quantity: z.number().int().min(0).max(9999),
   base_hours_each: z.number().min(0),
   efficiency_multiplier: z.number().min(0.1).max(5),
   sort_order: z.number().int().min(0).optional(),
