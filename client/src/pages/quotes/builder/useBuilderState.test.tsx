@@ -120,7 +120,8 @@ describe('applyTemplate does not override duration', () => {
     });
 
     expect(result.current.duration).toBe(90);
-    expect(result.current.shots.map((s) => s.shot_type)).toEqual(['Wide', 'Close']);
+    const userShots = result.current.shots.filter((s) => !s.is_companion);
+    expect(userShots.map((s) => s.shot_type)).toEqual(['Wide', 'Close']);
   });
 });
 

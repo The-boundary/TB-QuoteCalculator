@@ -10,13 +10,14 @@ import { Switch } from '@/components/ui/switch';
 import { useCreateVersion, useQuote, useUpdateVersion } from '@/hooks/useQuotes';
 import { useRateCard } from '@/hooks/useRateCards';
 import { AddShotPicker } from './builder/AddShotPicker';
+import { AnimationToggle } from './builder/AnimationToggle';
 import { ApplyTemplatePicker } from './builder/ApplyTemplatePicker';
 import { BudgetSuggestions } from './builder/BudgetSuggestions';
 import { HourPoolBar } from './builder/HourPoolBar';
 import { PostProductionSection } from './builder/PostProductionSection';
 import { ShotBreakdownTable } from './builder/ShotBreakdownTable';
 import { TotalsSummary } from './builder/TotalsSummary';
-import { useBuilderState } from './builder/useBuilderState';
+import { buildCategoryMap, useBuilderState } from './builder/useBuilderState';
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
 
@@ -51,6 +52,15 @@ export function QuoteBuilderPage() {
     () => builder.shots.map((shot) => shot.shot_type),
     [builder.shots],
   );
+
+  const sceneShotTypes = useMemo(() => {
+    const categoryMap = buildCategoryMap(rateCard?.items ?? []);
+    const set = new Set<string>();
+    for (const [shotType, category] of categoryMap) {
+      if (category === 'scene') set.add(shotType);
+    }
+    return set;
+  }, [rateCard?.items]);
 
   const saveVersion = useCallback(async () => {
     if (!quoteId) return;
@@ -151,7 +161,7 @@ export function QuoteBuilderPage() {
 
             {builder.mode === 'budget' && (
               <div className="flex items-center gap-2">
-                <Label htmlFor="budget-amount">Budget ($)</Label>
+                <Label htmlFor="budget-amount">Budget (£)</Label>
                 <Input
                   id="budget-amount"
                   type="number"
@@ -210,6 +220,11 @@ export function QuoteBuilderPage() {
               />
               <span className="text-sm text-muted-foreground">{builder.shotCount} total shots</span>
             </div>
+
+            <AnimationToggle
+              complexity={builder.animationComplexity}
+              onChange={builder.setAnimationComplexity}
+            />
           </CardContent>
         </Card>
 
@@ -226,6 +241,8 @@ export function QuoteBuilderPage() {
           shots={builder.shots}
           showPricing={builder.showPricing}
           hourlyRate={builder.hourlyRate}
+          sceneShotTypes={sceneShotTypes}
+          animationComplexity={builder.animationComplexity}
           onToggleSelect={builder.toggleShotSelection}
           onSelectAll={builder.selectAll}
           onDeselectAll={builder.deselectAll}
@@ -235,6 +252,7 @@ export function QuoteBuilderPage() {
           onUpdateEfficiency={builder.updateEfficiency}
           onRemove={builder.removeShot}
           onBatchSetEfficiency={builder.batchSetEfficiency}
+          onAnimationOverride={builder.setAnimationOverride}
           addShotAction={
             <AddShotPicker
               rateCardItems={rateCard?.items ?? []}

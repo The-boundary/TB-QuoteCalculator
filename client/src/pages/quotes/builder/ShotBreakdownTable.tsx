@@ -10,6 +10,8 @@ interface ShotBreakdownTableProps {
   shots: BuilderShot[];
   showPricing: boolean;
   hourlyRate: number;
+  sceneShotTypes?: Set<string>;
+  animationComplexity?: 'regular' | 'complex';
   onToggleSelect: (index: number) => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
@@ -19,6 +21,7 @@ interface ShotBreakdownTableProps {
   onUpdateEfficiency: (index: number, multiplier: number) => void;
   onRemove: (index: number) => void;
   onBatchSetEfficiency: (indices: number[], multiplier: number) => void;
+  onAnimationOverride?: (index: number, override: 'regular' | 'complex' | null) => void;
   addShotAction: ReactNode;
 }
 
@@ -26,6 +29,8 @@ export function ShotBreakdownTable({
   shots,
   showPricing,
   hourlyRate,
+  sceneShotTypes,
+  animationComplexity,
   onToggleSelect,
   onSelectAll,
   onDeselectAll,
@@ -35,17 +40,34 @@ export function ShotBreakdownTable({
   onUpdateEfficiency,
   onRemove,
   onBatchSetEfficiency,
+  onAnimationOverride,
   addShotAction,
 }: ShotBreakdownTableProps) {
   const [batchEfficiency, setBatchEfficiency] = useState('1.0');
 
+  // Compute user-shot index for each shot (skipping companion rows)
+  const userShotIndices = useMemo(() => {
+    const indices: number[] = [];
+    let userIdx = 0;
+    for (const shot of shots) {
+      if (shot.is_companion) {
+        indices.push(-1);
+      } else {
+        indices.push(userIdx);
+        userIdx++;
+      }
+    }
+    return indices;
+  }, [shots]);
+
+  const userShots = useMemo(() => shots.filter((s) => !s.is_companion), [shots]);
   const selectedIndices = useMemo(
-    () => shots.map((shot, index) => (shot.selected ? index : -1)).filter((index) => index >= 0),
-    [shots],
+    () => userShots.map((shot, index) => (shot.selected ? index : -1)).filter((index) => index >= 0),
+    [userShots],
   );
-  const allSelected = shots.length > 0 && shots.every((shot) => shot.selected);
+  const allSelected = userShots.length > 0 && userShots.every((shot) => shot.selected);
   const someSelected = selectedIndices.length > 0;
-  const totalPct = shots.reduce((sum, shot) => sum + shot.percentage, 0);
+  const totalPct = userShots.reduce((sum, shot) => sum + shot.percentage, 0);
 
   function applyBatch() {
     const value = Number(batchEfficiency);
@@ -114,16 +136,19 @@ export function ShotBreakdownTable({
                 <ShotRow
                   key={`${shot.shot_type}-${index}`}
                   shot={shot}
-                  index={index}
+                  index={userShotIndices[index]}
                   showPricing={showPricing}
                   hourlyRate={hourlyRate}
+                  isSceneCategory={sceneShotTypes?.has(shot.shot_type.toLowerCase())}
+                  animationComplexity={animationComplexity}
                   onToggleSelect={onToggleSelect}
-                   onPercentageChange={onPercentageChange}
-                   onUpdateQuantity={onUpdateQuantity}
-                    onUnlockManual={onUnlockManualQuantity}
-                    onUpdateEfficiency={onUpdateEfficiency}
-                    onRemove={onRemove}
-                  />
+                  onPercentageChange={onPercentageChange}
+                  onUpdateQuantity={onUpdateQuantity}
+                  onUnlockManual={onUnlockManualQuantity}
+                  onUpdateEfficiency={onUpdateEfficiency}
+                  onRemove={onRemove}
+                  onAnimationOverride={onAnimationOverride}
+                />
               ))}
             </TableBody>
           </Table>

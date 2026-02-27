@@ -43,6 +43,9 @@ export const shotSchema = z.object({
   base_hours_each: z.number().min(0),
   efficiency_multiplier: z.number().min(0.1).max(5),
   sort_order: z.number().int().min(0).optional(),
+  is_companion: z.boolean().default(false),
+  module_id: z.string().uuid().optional(),
+  animation_override: z.enum(['regular', 'complex']).nullable().default(null),
 });
 
 // Versions

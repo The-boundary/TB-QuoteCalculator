@@ -45,6 +45,9 @@ type ShotInput = {
   base_hours_each: number;
   efficiency_multiplier: number;
   sort_order?: number;
+  is_companion?: boolean;
+  module_id?: string;
+  animation_override?: 'regular' | 'complex' | null;
 };
 
 type MappedShot = {
@@ -55,6 +58,9 @@ type MappedShot = {
   efficiency_multiplier: number;
   adjusted_hours: number;
   sort_order: number;
+  is_companion: boolean;
+  module_id?: string;
+  animation_override: 'regular' | 'complex' | null;
 };
 
 export function mapShots(shots: ShotInput[]): MappedShot[] {
@@ -70,6 +76,9 @@ export function mapShots(shots: ShotInput[]): MappedShot[] {
       efficiency_multiplier: efficiency,
       adjusted_hours: baseHours * quantity * efficiency,
       sort_order: shot.sort_order ?? idx,
+      is_companion: shot.is_companion ?? false,
+      module_id: shot.module_id,
+      animation_override: shot.animation_override ?? null,
     };
   });
 }
@@ -115,15 +124,17 @@ async function insertShots(
   client: PoolClient,
   versionId: string,
   shots: MappedShot[],
+  moduleId?: string,
 ): Promise<unknown[]> {
   const created: unknown[] = [];
   for (const shot of shots) {
     const { rows } = await client.query(
       `INSERT INTO version_shots (
          version_id, shot_type, percentage, quantity,
-         base_hours_each, efficiency_multiplier, adjusted_hours, sort_order
+         base_hours_each, efficiency_multiplier, adjusted_hours, sort_order,
+         is_companion, module_id, animation_override
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         versionId,
@@ -134,6 +145,9 @@ async function insertShots(
         shot.efficiency_multiplier,
         shot.adjusted_hours,
         shot.sort_order,
+        shot.is_companion,
+        shot.module_id ?? moduleId ?? null,
+        shot.animation_override,
       ],
     );
     created.push(rows[0]);
@@ -262,10 +276,22 @@ router.get('/:id', async (req: Request, res: Response) => {
           ).rows
         : [];
 
+    const allModules =
+      versionIds.length > 0
+        ? (
+            await dbQuery(
+              'SELECT * FROM version_modules WHERE version_id = ANY($1) ORDER BY sort_order ASC',
+              [versionIds],
+            )
+          ).rows
+        : [];
+
     const shotsByVersion = groupByKey(allShots, 'version_id');
+    const modulesByVersion = groupByKey(allModules, 'version_id');
 
     const versionsWithShots = versions.map((version: { id: string }) => ({
       ...version,
+      modules: modulesByVersion.get(version.id) ?? [],
       shots: shotsByVersion.get(version.id) ?? [],
     }));
 
@@ -511,11 +537,21 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
       );
 
       const version = versionRows[0];
-      const createdShots = await insertShots(client, version.id, shotRows);
+
+      // Create a default module for this version
+      const { rows: moduleRows } = await client.query(
+        `INSERT INTO version_modules (version_id, name, module_type, duration_seconds, shot_count, animation_complexity, sort_order)
+         VALUES ($1, 'Film 1', 'film', $2, $3, 'regular', 0)
+         RETURNING *`,
+        [version.id, durationSeconds, shotCount(durationSeconds)],
+      );
+      const defaultModule = moduleRows[0];
+
+      const createdShots = await insertShots(client, version.id, shotRows, defaultModule.id);
 
       await touchQuote(client, req.params.id, modeForVersion, quote.mode as string);
 
-      return { ...version, shots: createdShots };
+      return { ...version, modules: [defaultModule], shots: createdShots };
     });
 
     res.status(201).json(result);
@@ -554,7 +590,8 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
         shotRows = mapShots(parsed.data.shots);
       } else {
         const { rows: existingShots } = await client.query(
-          `SELECT shot_type, percentage, quantity, base_hours_each, efficiency_multiplier, sort_order
+          `SELECT shot_type, percentage, quantity, base_hours_each, efficiency_multiplier,
+                  sort_order, is_companion, module_id, animation_override
            FROM version_shots WHERE version_id = $1 ORDER BY sort_order ASC`,
           [req.params.versionId],
         );
@@ -584,7 +621,26 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
         await client.query('DELETE FROM version_shots WHERE version_id = $1', [
           req.params.versionId,
         ]);
-        persistedShots = await insertShots(client, req.params.versionId, shotRows);
+
+        // Ensure a default module exists for this version
+        const { rows: existingModules } = await client.query(
+          'SELECT id FROM version_modules WHERE version_id = $1 ORDER BY sort_order ASC LIMIT 1',
+          [req.params.versionId],
+        );
+        let defaultModuleId: string;
+        if (existingModules.length > 0) {
+          defaultModuleId = existingModules[0].id;
+        } else {
+          const { rows: newModuleRows } = await client.query(
+            `INSERT INTO version_modules (version_id, name, module_type, duration_seconds, shot_count, animation_complexity, sort_order)
+             VALUES ($1, 'Film 1', 'film', $2, $3, 'regular', 0)
+             RETURNING id`,
+            [req.params.versionId, durationSeconds, shotCount(durationSeconds)],
+          );
+          defaultModuleId = newModuleRows[0].id;
+        }
+
+        persistedShots = await insertShots(client, req.params.versionId, shotRows, defaultModuleId);
       } else {
         const { rows: existing } = await client.query(
           'SELECT * FROM version_shots WHERE version_id = $1 ORDER BY sort_order ASC',

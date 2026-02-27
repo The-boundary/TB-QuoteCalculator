@@ -85,6 +85,8 @@ export function QuoteDetailPage() {
         base_hours_each: shot.base_hours_each,
         efficiency_multiplier: shot.efficiency_multiplier,
         sort_order: shot.sort_order,
+        is_companion: shot.is_companion ?? false,
+        animation_override: shot.animation_override ?? null,
       })),
     });
 

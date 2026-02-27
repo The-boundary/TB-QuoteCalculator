@@ -118,6 +118,8 @@ describe('shared types', () => {
         efficiency_multiplier: 1,
         adjusted_hours: 360,
         sort_order: 0,
+        is_companion: false,
+        animation_override: null,
       };
       expect(shot.percentage).toBe(40);
     });

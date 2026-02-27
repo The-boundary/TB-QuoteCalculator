@@ -36,6 +36,7 @@ export function AddShotPicker({
   const grouped = useMemo(() => {
     const groups: Record<string, RateCardItemLike[]> = {};
     for (const item of rateCardItems) {
+      if (item.shot_type.startsWith('__')) continue;
       const cat = item.category;
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(item);

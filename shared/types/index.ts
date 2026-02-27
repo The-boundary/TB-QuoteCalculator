@@ -98,6 +98,17 @@ export interface QuoteVersion {
   created_at: string;
 }
 
+export interface VersionModule {
+  id: string;
+  version_id: string;
+  name: string;
+  module_type: 'film' | 'supplementary';
+  duration_seconds: number | null;
+  shot_count: number | null;
+  animation_complexity: 'regular' | 'complex';
+  sort_order: number;
+}
+
 export interface VersionShot {
   id: string;
   version_id: string;
@@ -108,10 +119,16 @@ export interface VersionShot {
   efficiency_multiplier: number;
   adjusted_hours: number;
   sort_order: number;
+  module_id?: string;
+  is_companion: boolean;
+  animation_override: 'regular' | 'complex' | null;
 }
+
+export const ANIMATION_COMPANION_TYPE = '__animation_companion';
 
 export interface QuoteVersionWithShots extends QuoteVersion {
   shots: VersionShot[];
+  modules?: VersionModule[];
 }
 
 export interface QuoteWithVersions extends Quote {
