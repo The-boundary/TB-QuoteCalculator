@@ -48,6 +48,27 @@ export const shotSchema = z.object({
   animation_override: z.enum(['regular', 'complex']).nullable().default(null),
 });
 
+// Line items
+export const lineItemSchema = z.object({
+  name: z.string().min(1).max(200),
+  category: z.enum(['service', 'deliverable', 'pre_production']),
+  hours_each: z.number().min(0),
+  quantity: z.number().int().min(1).max(999),
+  notes: z.string().max(500).nullable().optional(),
+  sort_order: z.number().int().min(0).optional(),
+});
+
+// Modules (for multi-film)
+export const moduleSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1).max(200),
+  module_type: z.enum(['film', 'supplementary']).default('film'),
+  duration_seconds: z.number().int().min(1).max(600),
+  animation_complexity: z.enum(['regular', 'complex']).default('regular'),
+  sort_order: z.number().int().min(0).optional(),
+  shots: z.array(shotSchema).max(100).optional(),
+});
+
 // Versions
 export const createVersionSchema = z.object({
   mode: z.enum(['retainer', 'budget']).optional(),
@@ -57,6 +78,8 @@ export const createVersionSchema = z.object({
   pool_budget_amount: z.number().min(0).nullable().optional(),
   notes: z.string().max(2000).optional(),
   shots: z.array(shotSchema).max(100).optional(),
+  line_items: z.array(lineItemSchema).max(50).optional(),
+  modules: z.array(moduleSchema).max(10).optional(),
 });
 
 export const updateVersionSchema = z.object({
@@ -67,6 +90,8 @@ export const updateVersionSchema = z.object({
   pool_budget_amount: z.number().min(0).nullable().optional(),
   notes: z.string().max(2000).optional(),
   shots: z.array(shotSchema).max(100).optional(),
+  line_items: z.array(lineItemSchema).max(50).optional(),
+  modules: z.array(moduleSchema).max(10).optional(),
 });
 
 // Rate cards

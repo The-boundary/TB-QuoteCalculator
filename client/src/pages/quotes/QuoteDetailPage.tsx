@@ -72,21 +72,44 @@ export function QuoteDetailPage() {
     if (!quote || !quoteId || !projectId || sortedVersions.length === 0) return;
 
     const latest = sortedVersions[0];
+    // Group shots by module_id for proper module-based cloning
+    const shotsByModuleId = new Map<string, typeof latest.shots>();
+    for (const shot of latest.shots) {
+      const mid = shot.module_id ?? (latest.modules?.[0]?.id ?? 'default');
+      if (!shotsByModuleId.has(mid)) shotsByModuleId.set(mid, []);
+      shotsByModuleId.get(mid)!.push(shot);
+    }
+
     const newVersion = await createVersion.mutateAsync({
       quoteId,
       duration_seconds: latest.duration_seconds,
       hourly_rate: latest.hourly_rate,
       pool_budget_hours: latest.pool_budget_hours,
       pool_budget_amount: latest.pool_budget_amount,
-      shots: latest.shots.map((shot) => ({
-        shot_type: shot.shot_type,
-        percentage: shot.percentage,
-        quantity: shot.quantity,
-        base_hours_each: shot.base_hours_each,
-        efficiency_multiplier: shot.efficiency_multiplier,
-        sort_order: shot.sort_order,
-        is_companion: shot.is_companion ?? false,
-        animation_override: shot.animation_override ?? null,
+      modules: (latest.modules ?? []).map((mod) => ({
+        name: mod.name,
+        module_type: mod.module_type,
+        duration_seconds: mod.duration_seconds ?? 60,
+        animation_complexity: mod.animation_complexity,
+        sort_order: mod.sort_order,
+        shots: (shotsByModuleId.get(mod.id) ?? []).map((shot) => ({
+          shot_type: shot.shot_type,
+          percentage: shot.percentage,
+          quantity: shot.quantity,
+          base_hours_each: shot.base_hours_each,
+          efficiency_multiplier: shot.efficiency_multiplier,
+          sort_order: shot.sort_order,
+          is_companion: shot.is_companion ?? false,
+          animation_override: shot.animation_override ?? null,
+        })),
+      })),
+      line_items: (latest.line_items ?? []).map((item) => ({
+        name: item.name,
+        category: item.category,
+        hours_each: item.hours_each,
+        quantity: item.quantity,
+        notes: item.notes,
+        sort_order: item.sort_order,
       })),
     });
 

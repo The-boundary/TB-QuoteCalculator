@@ -155,6 +155,50 @@ async function insertShots(
   return created;
 }
 
+type LineItemInput = {
+  name: string;
+  category: 'service' | 'deliverable' | 'pre_production';
+  hours_each: number;
+  quantity: number;
+  notes?: string | null;
+  sort_order?: number;
+};
+
+async function insertLineItems(
+  client: PoolClient,
+  versionId: string,
+  items: LineItemInput[],
+): Promise<unknown[]> {
+  const created: unknown[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const totalHrs = item.hours_each * item.quantity;
+    const { rows } = await client.query(
+      `INSERT INTO version_line_items (
+         version_id, name, category, hours_each, quantity, total_hours, notes, sort_order
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        versionId,
+        item.name,
+        item.category,
+        item.hours_each,
+        item.quantity,
+        totalHrs,
+        item.notes ?? null,
+        item.sort_order ?? i,
+      ],
+    );
+    created.push(rows[0]);
+  }
+  return created;
+}
+
+function totalLineItemHours(items: LineItemInput[]): number {
+  return items.reduce((sum, item) => sum + item.hours_each * item.quantity, 0);
+}
+
 /** Fetch quote with rate card inside a transaction, throwing on not-found. */
 async function fetchQuoteWithRateCard(
   client: PoolClient,
@@ -286,13 +330,25 @@ router.get('/:id', async (req: Request, res: Response) => {
           ).rows
         : [];
 
+    const allLineItems =
+      versionIds.length > 0
+        ? (
+            await dbQuery(
+              'SELECT * FROM version_line_items WHERE version_id = ANY($1) ORDER BY sort_order ASC',
+              [versionIds],
+            )
+          ).rows
+        : [];
+
     const shotsByVersion = groupByKey(allShots, 'version_id');
     const modulesByVersion = groupByKey(allModules, 'version_id');
+    const lineItemsByVersion = groupByKey(allLineItems, 'version_id');
 
     const versionsWithShots = versions.map((version: { id: string }) => ({
       ...version,
       modules: modulesByVersion.get(version.id) ?? [],
       shots: shotsByVersion.get(version.id) ?? [],
+      line_items: lineItemsByVersion.get(version.id) ?? [],
     }));
 
     const { rows: statusLog } = await dbQuery(
@@ -509,10 +565,27 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
         },
       );
 
-      const shotRows = mapShots(parsed.data.shots ?? []);
+      const lineItems: LineItemInput[] = parsed.data.line_items ?? [];
+      const inputModules = parsed.data.modules;
+
+      // Compute total shot hours and shot count across all modules
+      let allShotRows: MappedShot[] = [];
+      let totalShotCountVal = 0;
+
+      if (inputModules && inputModules.length > 0) {
+        for (const mod of inputModules) {
+          allShotRows = allShotRows.concat(mapShots(mod.shots ?? []));
+          totalShotCountVal += shotCount(mod.duration_seconds);
+        }
+      } else {
+        allShotRows = mapShots(parsed.data.shots ?? []);
+        totalShotCountVal = shotCount(durationSeconds);
+      }
+
       const total_hours =
-        totalShotHours(shotRows) +
-        editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s));
+        totalShotHours(allShotRows) +
+        editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s)) +
+        totalLineItemHours(lineItems);
 
       const { rows: versionRows } = await client.query(
         `INSERT INTO quote_versions (
@@ -526,7 +599,7 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
           req.params.id,
           nextRows[0].next_version,
           durationSeconds,
-          shotCount(durationSeconds),
+          totalShotCountVal,
           poolHours,
           poolAmount,
           total_hours,
@@ -538,20 +611,42 @@ router.post('/:id/versions', async (req: Request, res: Response) => {
 
       const version = versionRows[0];
 
-      // Create a default module for this version
-      const { rows: moduleRows } = await client.query(
-        `INSERT INTO version_modules (version_id, name, module_type, duration_seconds, shot_count, animation_complexity, sort_order)
-         VALUES ($1, 'Film 1', 'film', $2, $3, 'regular', 0)
-         RETURNING *`,
-        [version.id, durationSeconds, shotCount(durationSeconds)],
-      );
-      const defaultModule = moduleRows[0];
+      // Insert modules and their shots
+      const createdModules: unknown[] = [];
+      const createdShots: unknown[] = [];
 
-      const createdShots = await insertShots(client, version.id, shotRows, defaultModule.id);
+      if (inputModules && inputModules.length > 0) {
+        for (let i = 0; i < inputModules.length; i++) {
+          const mod = inputModules[i];
+          const modShotCount = shotCount(mod.duration_seconds);
+          const { rows: moduleRows } = await client.query(
+            `INSERT INTO version_modules (version_id, name, module_type, duration_seconds, shot_count, animation_complexity, sort_order)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING *`,
+            [version.id, mod.name, mod.module_type, mod.duration_seconds, modShotCount, mod.animation_complexity, mod.sort_order ?? i],
+          );
+          createdModules.push(moduleRows[0]);
+          const moduleShots = await insertShots(client, version.id, mapShots(mod.shots ?? []), moduleRows[0].id);
+          createdShots.push(...moduleShots);
+        }
+      } else {
+        // Backward compat: create a default module
+        const { rows: moduleRows } = await client.query(
+          `INSERT INTO version_modules (version_id, name, module_type, duration_seconds, shot_count, animation_complexity, sort_order)
+           VALUES ($1, 'Film 1', 'film', $2, $3, 'regular', 0)
+           RETURNING *`,
+          [version.id, durationSeconds, shotCount(durationSeconds)],
+        );
+        createdModules.push(moduleRows[0]);
+        const moduleShots = await insertShots(client, version.id, allShotRows, moduleRows[0].id);
+        createdShots.push(...moduleShots);
+      }
+
+      const createdLineItems = await insertLineItems(client, version.id, lineItems);
 
       await touchQuote(client, req.params.id, modeForVersion, quote.mode as string);
 
-      return { ...version, modules: [defaultModule], shots: createdShots };
+      return { ...version, modules: createdModules, shots: createdShots, line_items: createdLineItems };
     });
 
     res.status(201).json(result);
@@ -584,20 +679,6 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
       );
       const modeForVersion = parsed.data.mode ?? (quote.mode as string);
 
-      // Resolve shots: use provided shots or re-map existing ones
-      let shotRows: MappedShot[];
-      if (parsed.data.shots) {
-        shotRows = mapShots(parsed.data.shots);
-      } else {
-        const { rows: existingShots } = await client.query(
-          `SELECT shot_type, percentage, quantity, base_hours_each, efficiency_multiplier,
-                  sort_order, is_companion, module_id, animation_override
-           FROM version_shots WHERE version_id = $1 ORDER BY sort_order ASC`,
-          [req.params.versionId],
-        );
-        shotRows = mapShots(existingShots);
-      }
-
       const { poolHours, poolAmount } = calculatePoolBudget(
         modeForVersion,
         hourlyRate,
@@ -611,18 +692,55 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
         },
       );
 
-      const total_hours =
-        totalShotHours(shotRows) +
-        editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s));
+      // Resolve line items: use provided or keep existing
+      let lineItems: LineItemInput[];
+      let persistedLineItems: unknown[];
+      if (parsed.data.line_items) {
+        lineItems = parsed.data.line_items;
+      } else {
+        const { rows: existingLineItems } = await client.query(
+          `SELECT name, category, hours_each, quantity, notes, sort_order
+           FROM version_line_items WHERE version_id = $1 ORDER BY sort_order ASC`,
+          [req.params.versionId],
+        );
+        lineItems = existingLineItems;
+      }
 
-      // Replace shots if new ones provided, otherwise keep existing
-      let persistedShots: unknown[];
-      if (parsed.data.shots) {
-        await client.query('DELETE FROM version_shots WHERE version_id = $1', [
-          req.params.versionId,
-        ]);
+      const inputModules = parsed.data.modules;
+      let persistedModules: unknown[] = [];
+      let persistedShots: unknown[] = [];
+      let allShotRows: MappedShot[] = [];
+      let totalShotCountVal = 0;
 
-        // Ensure a default module exists for this version
+      if (inputModules && inputModules.length > 0) {
+        // Full module replacement: delete existing modules and shots
+        await client.query('DELETE FROM version_shots WHERE version_id = $1', [req.params.versionId]);
+        await client.query('DELETE FROM version_modules WHERE version_id = $1', [req.params.versionId]);
+
+        for (let i = 0; i < inputModules.length; i++) {
+          const mod = inputModules[i];
+          const modShotCount = shotCount(mod.duration_seconds);
+          totalShotCountVal += modShotCount;
+          const modShots = mapShots(mod.shots ?? []);
+          allShotRows = allShotRows.concat(modShots);
+
+          const { rows: moduleRows } = await client.query(
+            `INSERT INTO version_modules (version_id, name, module_type, duration_seconds, shot_count, animation_complexity, sort_order)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING *`,
+            [req.params.versionId, mod.name, mod.module_type, mod.duration_seconds, modShotCount, mod.animation_complexity, mod.sort_order ?? i],
+          );
+          persistedModules.push(moduleRows[0]);
+          const moduleShots = await insertShots(client, req.params.versionId, modShots, moduleRows[0].id);
+          persistedShots.push(...moduleShots);
+        }
+      } else if (parsed.data.shots) {
+        // Legacy flat shots path
+        allShotRows = mapShots(parsed.data.shots);
+        totalShotCountVal = shotCount(durationSeconds);
+
+        await client.query('DELETE FROM version_shots WHERE version_id = $1', [req.params.versionId]);
+
         const { rows: existingModules } = await client.query(
           'SELECT id FROM version_modules WHERE version_id = $1 ORDER BY sort_order ASC LIMIT 1',
           [req.params.versionId],
@@ -640,13 +758,35 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
           defaultModuleId = newModuleRows[0].id;
         }
 
-        persistedShots = await insertShots(client, req.params.versionId, shotRows, defaultModuleId);
+        persistedShots = await insertShots(client, req.params.versionId, allShotRows, defaultModuleId);
       } else {
-        const { rows: existing } = await client.query(
+        // Keep existing shots and modules
+        const { rows: existingShots } = await client.query(
           'SELECT * FROM version_shots WHERE version_id = $1 ORDER BY sort_order ASC',
           [req.params.versionId],
         );
-        persistedShots = existing;
+        persistedShots = existingShots;
+        allShotRows = mapShots(existingShots);
+        totalShotCountVal = shotCount(durationSeconds);
+      }
+
+      const total_hours =
+        totalShotHours(allShotRows) +
+        editingHours(durationSeconds, Number(rateCard.editing_hours_per_30s)) +
+        totalLineItemHours(lineItems);
+
+      // Replace line items if new ones provided, otherwise keep existing
+      if (parsed.data.line_items) {
+        await client.query('DELETE FROM version_line_items WHERE version_id = $1', [
+          req.params.versionId,
+        ]);
+        persistedLineItems = await insertLineItems(client, req.params.versionId, lineItems);
+      } else {
+        const { rows: existing } = await client.query(
+          'SELECT * FROM version_line_items WHERE version_id = $1 ORDER BY sort_order ASC',
+          [req.params.versionId],
+        );
+        persistedLineItems = existing;
       }
 
       const notes = parsed.data.notes !== undefined ? parsed.data.notes : existingVersion.notes;
@@ -660,7 +800,7 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
          RETURNING *`,
         [
           durationSeconds,
-          shotCount(durationSeconds),
+          totalShotCountVal,
           poolHours,
           poolAmount,
           total_hours,
@@ -672,7 +812,7 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
 
       await touchQuote(client, req.params.id, modeForVersion, quote.mode as string);
 
-      return { ...updatedRows[0], shots: persistedShots };
+      return { ...updatedRows[0], modules: persistedModules, shots: persistedShots, line_items: persistedLineItems };
     });
 
     res.json(result);

@@ -9,17 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useCreateVersion, useQuote, useUpdateVersion } from '@/hooks/useQuotes';
 import { useRateCard } from '@/hooks/useRateCards';
-import { AddShotPicker } from './builder/AddShotPicker';
-import { AnimationToggle } from './builder/AnimationToggle';
-import { ApplyTemplatePicker } from './builder/ApplyTemplatePicker';
 import { BudgetSuggestions } from './builder/BudgetSuggestions';
 import { HourPoolBar } from './builder/HourPoolBar';
-import { PostProductionSection } from './builder/PostProductionSection';
-import { ShotBreakdownTable } from './builder/ShotBreakdownTable';
+import { LineItemsSection } from './builder/LineItemsSection';
+import { ModuleManager } from './builder/ModuleManager';
 import { TotalsSummary } from './builder/TotalsSummary';
-import { buildCategoryMap, useBuilderState } from './builder/useBuilderState';
-
-const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
+import { useBuilderState } from './builder/useBuilderState';
 
 export function QuoteBuilderPage() {
   const navigate = useNavigate();
@@ -44,23 +39,7 @@ export function QuoteBuilderPage() {
   const updateVersion = useUpdateVersion();
   const createVersion = useCreateVersion();
 
-  const [addShotOpen, setAddShotOpen] = useState(false);
-  const [templateOpen, setTemplateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const existingShotTypes = useMemo(
-    () => builder.shots.map((shot) => shot.shot_type),
-    [builder.shots],
-  );
-
-  const sceneShotTypes = useMemo(() => {
-    const categoryMap = buildCategoryMap(rateCard?.items ?? []);
-    const set = new Set<string>();
-    for (const [shotType, category] of categoryMap) {
-      if (category === 'scene') set.add(shotType);
-    }
-    return set;
-  }, [rateCard?.items]);
 
   const saveVersion = useCallback(async () => {
     if (!quoteId) return;
@@ -104,7 +83,7 @@ export function QuoteBuilderPage() {
     <>
       <PageHeader
         title={`${quote.project?.name ?? 'Quote'} — Version ${versionNumber}`}
-        description={`${builder.shotCount} shots for ${builder.duration}s`}
+        description={`${builder.totalShotCount} shots across ${builder.modules.length} film${builder.modules.length > 1 ? 's' : ''} · ${builder.totalDuration}s total`}
         actions={
           <Button
             variant="ghost"
@@ -179,55 +158,6 @@ export function QuoteBuilderPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Duration</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              {DURATION_PRESETS.map((seconds) => (
-                <Button
-                  key={seconds}
-                  size="sm"
-                  variant={builder.duration === seconds ? 'default' : 'outline'}
-                  onClick={() => builder.setDuration(seconds)}
-                >
-                  {seconds}s
-                </Button>
-              ))}
-
-              <div className="ml-2 border-l border-border pl-2">
-                <ApplyTemplatePicker
-                  onApply={builder.applyTemplate}
-                  open={templateOpen}
-                  onOpenChange={setTemplateOpen}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Label htmlFor="duration-input">Custom (seconds)</Label>
-              <Input
-                id="duration-input"
-                type="number"
-                min={1}
-                max={600}
-                value={builder.duration}
-                onChange={(event) =>
-                  builder.setDuration(Math.max(1, Number(event.target.value) || 1))
-                }
-                className="w-28"
-              />
-              <span className="text-sm text-muted-foreground">{builder.shotCount} total shots</span>
-            </div>
-
-            <AnimationToggle
-              complexity={builder.animationComplexity}
-              onChange={builder.setAnimationComplexity}
-            />
-          </CardContent>
-        </Card>
-
         {builder.mode === 'budget' && (
           <HourPoolBar
             used={builder.totalHours}
@@ -237,42 +167,44 @@ export function QuoteBuilderPage() {
           />
         )}
 
-        <ShotBreakdownTable
-          shots={builder.shots}
+        <ModuleManager
+          modules={builder.modules}
+          rateCard={rateCard}
           showPricing={builder.showPricing}
           hourlyRate={builder.hourlyRate}
-          sceneShotTypes={sceneShotTypes}
-          animationComplexity={builder.animationComplexity}
-          onToggleSelect={builder.toggleShotSelection}
-          onSelectAll={builder.selectAll}
-          onDeselectAll={builder.deselectAll}
-          onPercentageChange={builder.setPercentage}
+          editingHoursPer30s={builder.editingHoursPer30s}
+          onAddModule={builder.addModule}
+          onRemoveModule={builder.removeModule}
+          onUpdateModuleName={builder.updateModuleName}
+          onSetDuration={builder.setDuration}
+          onSetPercentage={builder.setPercentage}
           onUpdateQuantity={builder.updateQuantity}
           onUnlockManualQuantity={builder.unlockManualQuantity}
           onUpdateEfficiency={builder.updateEfficiency}
-          onRemove={builder.removeShot}
           onBatchSetEfficiency={builder.batchSetEfficiency}
+          onAddShot={builder.addShot}
+          onRemoveShot={builder.removeShot}
+          onApplyTemplate={builder.applyTemplate}
+          onSetAnimationComplexity={builder.setAnimationComplexity}
           onAnimationOverride={builder.setAnimationOverride}
-          addShotAction={
-            <AddShotPicker
-              rateCardItems={rateCard?.items ?? []}
-              existingShotTypes={existingShotTypes}
-              onAdd={(shotType, baseHours) => builder.addShot(shotType, baseHours)}
-              open={addShotOpen}
-              onOpenChange={setAddShotOpen}
-            />
-          }
+          onToggleSelect={builder.toggleShotSelection}
+          onSelectAll={builder.selectAll}
+          onDeselectAll={builder.deselectAll}
         />
 
-        <PostProductionSection
-          duration={builder.duration}
-          editingHours={builder.editingHours}
-          editingHoursPer30s={builder.editingHoursPer30s}
+        <LineItemsSection
+          lineItems={builder.lineItems}
+          showPricing={builder.showPricing}
+          hourlyRate={builder.hourlyRate}
+          onAdd={builder.addLineItem}
+          onUpdate={builder.updateLineItem}
+          onRemove={builder.removeLineItem}
         />
 
         <TotalsSummary
           totalShotHours={builder.totalShotHours}
           editingHours={builder.editingHours}
+          totalLineItemHours={builder.totalLineItemHours}
           totalHours={builder.totalHours}
           poolBudgetHours={builder.poolBudgetHours}
           remaining={builder.remaining}

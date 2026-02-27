@@ -2,12 +2,22 @@ import { useCallback, useMemo, useState } from 'react';
 import { calcShotCount } from '@/lib/utils';
 import type {
   FilmTemplateWithShots,
+  LineItemCategory,
   QuoteMode,
   QuoteVersionWithShots,
   RateCardItem,
   RateCardWithItems,
 } from '@shared/types';
 import { ANIMATION_COMPANION_TYPE } from '@shared/types';
+
+export interface BuilderLineItem {
+  name: string;
+  category: LineItemCategory;
+  hours_each: number;
+  quantity: number;
+  notes: string;
+  sort_order: number;
+}
 
 export interface BuilderShot {
   shot_type: string;
@@ -23,17 +33,25 @@ export interface BuilderShot {
   animation_override?: 'regular' | 'complex' | null;
 }
 
-interface BuilderState {
-  mode: QuoteMode;
+export interface BuilderModule {
+  id: string;
+  name: string;
+  moduleType: 'film' | 'supplementary';
   duration: number;
   shotCount: number;
   shots: BuilderShot[];
+  animationComplexity: 'regular' | 'complex';
+}
+
+interface BuilderState {
+  mode: QuoteMode;
+  modules: BuilderModule[];
+  lineItems: BuilderLineItem[];
   notes: string;
   showPricing: boolean;
   hourlyRate: number;
   budgetAmount: number | null;
   poolBudgetHours: number | null;
-  animationComplexity: 'regular' | 'complex';
 }
 
 function normalizePercentages(shots: BuilderShot[]): BuilderShot[] {
@@ -195,6 +213,106 @@ export function syncAnimationCompanion(
   return [...userShots, companion];
 }
 
+/** Generate a simple unique ID for client-side module tracking. */
+function generateModuleId(): string {
+  return crypto.randomUUID();
+}
+
+/** Update a single module at index, returning a new modules array. */
+function updateModuleAt(
+  modules: BuilderModule[],
+  idx: number,
+  fn: (mod: BuilderModule) => BuilderModule,
+): BuilderModule[] {
+  return modules.map((m, i) => (i === idx ? fn(m) : m));
+}
+
+/** Parse raw version shots into BuilderShot[] */
+function parseShots(
+  rawShots: QuoteVersionWithShots['shots'],
+  shotCount: number,
+): BuilderShot[] {
+  return rawShots.map((shot, index) => ({
+    shot_type: shot.shot_type,
+    percentage:
+      shot.percentage !== undefined && shot.percentage !== null
+        ? Number(shot.percentage)
+        : shotCount > 0
+          ? (Math.max(1, Number(shot.quantity)) / shotCount) * 100
+          : 0,
+    quantity: Number(shot.quantity),
+    base_hours_each: Number(shot.base_hours_each),
+    efficiency_multiplier: Number(shot.efficiency_multiplier),
+    adjusted_hours: Number(shot.adjusted_hours),
+    sort_order: shot.sort_order ?? index,
+    selected: false,
+    manualOverride: shot.is_companion ?? false,
+    is_companion: shot.is_companion ?? false,
+    animation_override: shot.animation_override ?? null,
+  }));
+}
+
+/** Initialize modules from existing version data, or create a default. */
+function initModules(
+  existingVersion: QuoteVersionWithShots | undefined,
+  rateCardItems: RateCardItem[],
+): BuilderModule[] {
+  const versionModules = existingVersion?.modules ?? [];
+  const versionShots = existingVersion?.shots ?? [];
+
+  if (versionModules.length > 0) {
+    // Group shots by module_id
+    const shotsByModuleId = new Map<string, typeof versionShots>();
+    for (const shot of versionShots) {
+      const mid = shot.module_id ?? versionModules[0].id;
+      if (!shotsByModuleId.has(mid)) shotsByModuleId.set(mid, []);
+      shotsByModuleId.get(mid)!.push(shot);
+    }
+
+    return versionModules.map((mod) => {
+      const moduleShots = shotsByModuleId.get(mod.id) ?? [];
+      const duration = mod.duration_seconds ?? 60;
+      const sc = calcShotCount(duration);
+      const complexity = (mod.animation_complexity as 'regular' | 'complex') ?? 'regular';
+
+      const baseShots = parseShots(moduleShots, sc);
+      const userShots = baseShots.filter((s) => !s.is_companion);
+      const distributed = rebalance(sc, userShots);
+      const withCompanion = syncAnimationCompanion(distributed, complexity, rateCardItems);
+
+      return {
+        id: mod.id,
+        name: mod.name,
+        moduleType: (mod.module_type as 'film' | 'supplementary') ?? 'film',
+        duration,
+        shotCount: sc,
+        shots: withCompanion,
+        animationComplexity: complexity,
+      };
+    });
+  }
+
+  // No modules — create a single default
+  const duration = existingVersion?.duration_seconds ?? 60;
+  const sc = calcShotCount(duration);
+  const baseShots = parseShots(versionShots, sc);
+  const userShots = baseShots.filter((s) => !s.is_companion);
+  const distributed = rebalance(sc, userShots);
+  const withCompanion = syncAnimationCompanion(distributed, 'regular', rateCardItems);
+
+  return [
+    {
+      id: generateModuleId(),
+      name: 'Film 1',
+      moduleType: 'film',
+      duration,
+      shotCount: sc,
+      shots: withCompanion,
+      animationComplexity: 'regular',
+    },
+  ];
+}
+
 export function useBuilderState(
   rateCard: RateCardWithItems | undefined,
   existingVersion: QuoteVersionWithShots | undefined,
@@ -202,55 +320,29 @@ export function useBuilderState(
 ) {
   const [state, setState] = useState<BuilderState>(() => {
     const baseHourlyRate = rateCard?.hourly_rate ?? existingVersion?.hourly_rate ?? 125;
-    const duration = existingVersion?.duration_seconds ?? 60;
-    const shotCount = calcShotCount(duration);
+    const modules = initModules(existingVersion, rateCard?.items ?? []);
 
-    // Derive animation complexity from existing version modules
-    const existingModules = existingVersion?.modules ?? [];
-    const initialComplexity: 'regular' | 'complex' =
-      existingModules.length > 0
-        ? (existingModules[0].animation_complexity as 'regular' | 'complex')
-        : 'regular';
-
-    const existingShots = existingVersion?.shots ?? [];
-    const baseShots: BuilderShot[] = existingShots.map((shot, index) => ({
-      shot_type: shot.shot_type,
-      percentage:
-        shot.percentage !== undefined && shot.percentage !== null
-          ? Number(shot.percentage)
-          : shotCount > 0
-            ? (Math.max(1, Number(shot.quantity)) / shotCount) * 100
-            : 0,
-      quantity: Number(shot.quantity),
-      base_hours_each: Number(shot.base_hours_each),
-      efficiency_multiplier: Number(shot.efficiency_multiplier),
-      adjusted_hours: Number(shot.adjusted_hours),
-      sort_order: shot.sort_order ?? index,
-      selected: false,
-      manualOverride: shot.is_companion ?? false,
-      is_companion: shot.is_companion ?? false,
-      animation_override: shot.animation_override ?? null,
-    }));
-
-    // Rebalance only non-companion shots, then re-add companion
-    const userShots = baseShots.filter((s) => !s.is_companion);
-    const distributed = rebalance(shotCount, userShots);
-    const withCompanion = syncAnimationCompanion(
-      distributed,
-      initialComplexity,
-      rateCard?.items ?? [],
+    const existingLineItems: BuilderLineItem[] = (existingVersion?.line_items ?? []).map(
+      (item, index) => ({
+        name: item.name,
+        category: item.category,
+        hours_each: Number(item.hours_each),
+        quantity: Number(item.quantity),
+        notes: item.notes ?? '',
+        sort_order: item.sort_order ?? index,
+      }),
     );
 
+    const totalDuration = modules.reduce((sum, m) => sum + m.duration, 0);
     const budgetHours =
       quoteMode === 'budget'
-        ? (existingVersion?.pool_budget_hours ?? duration * (rateCard?.hours_per_second ?? 0))
+        ? (existingVersion?.pool_budget_hours ?? totalDuration * (rateCard?.hours_per_second ?? 0))
         : null;
 
     return {
       mode: quoteMode,
-      duration,
-      shotCount,
-      shots: withCompanion,
+      modules,
+      lineItems: existingLineItems,
       notes: existingVersion?.notes ?? '',
       showPricing: true,
       hourlyRate: baseHourlyRate,
@@ -260,23 +352,41 @@ export function useBuilderState(
             (budgetHours !== null ? budgetHours * baseHourlyRate : null))
           : null,
       poolBudgetHours: budgetHours,
-      animationComplexity: initialComplexity,
     };
   });
 
   const editingHoursPer30s = rateCard?.editing_hours_per_30s ?? 0;
 
+  const totalDuration = useMemo(
+    () => state.modules.reduce((sum, m) => sum + m.duration, 0),
+    [state.modules],
+  );
+
+  const totalShotCount = useMemo(
+    () => state.modules.reduce((sum, m) => sum + m.shotCount, 0),
+    [state.modules],
+  );
+
   const editingHours = useMemo(
-    () => Math.ceil(state.duration / 30) * editingHoursPer30s,
-    [state.duration, editingHoursPer30s],
+    () => Math.ceil(totalDuration / 30) * editingHoursPer30s,
+    [totalDuration, editingHoursPer30s],
   );
 
   const totalShotHours = useMemo(
-    () => state.shots.reduce((sum, shot) => sum + shot.adjusted_hours, 0),
-    [state.shots],
+    () =>
+      state.modules.reduce(
+        (sum, m) => sum + m.shots.reduce((s, shot) => s + shot.adjusted_hours, 0),
+        0,
+      ),
+    [state.modules],
   );
 
-  const totalHours = totalShotHours + editingHours;
+  const totalLineItemHours = useMemo(
+    () => state.lineItems.reduce((sum, item) => sum + item.hours_each * item.quantity, 0),
+    [state.lineItems],
+  );
+
+  const totalHours = totalShotHours + editingHours + totalLineItemHours;
 
   const effectivePoolBudgetHours = useMemo(() => {
     if (state.mode !== 'budget') return null;
@@ -293,6 +403,8 @@ export function useBuilderState(
   const remaining =
     effectivePoolBudgetHours !== null ? effectivePoolBudgetHours - totalHours : null;
 
+  // ─── Global callbacks ───
+
   const setMode = useCallback((mode: QuoteMode) => {
     setState((prev) => ({
       ...prev,
@@ -305,25 +417,6 @@ export function useBuilderState(
   const setShowPricing = useCallback((showPricing: boolean) => {
     setState((prev) => ({ ...prev, showPricing }));
   }, []);
-
-  const setDuration = useCallback(
-    (duration: number) => {
-      setState((prev) => {
-        const sc = calcShotCount(duration);
-        const userShots = prev.shots.filter((s) => !s.is_companion);
-        const rebalanced = rebalance(sc, userShots);
-        const shots = syncAnimationCompanion(rebalanced, prev.animationComplexity, rateCard?.items ?? []);
-
-        const poolBudgetHours =
-          prev.mode === 'budget' && prev.budgetAmount === null
-            ? duration * (rateCard?.hours_per_second ?? 0)
-            : prev.poolBudgetHours;
-
-        return { ...prev, duration, shotCount: sc, shots, poolBudgetHours };
-      });
-    },
-    [rateCard?.hours_per_second, rateCard?.items],
-  );
 
   const setHourlyRate = useCallback((hourlyRate: number) => {
     setState((prev) => ({ ...prev, hourlyRate: Math.max(0, hourlyRate) }));
@@ -338,224 +431,433 @@ export function useBuilderState(
     }));
   }, []);
 
-  const setPercentage = useCallback((index: number, percentage: number) => {
-    setState((prev) => {
-      const clamped = Math.max(0, Math.min(100, percentage));
-      const userShots = [...prev.shots.filter((s) => !s.is_companion)];
-      const current = userShots[index];
-      if (!current) return prev;
-
-      userShots[index] = { ...current, percentage: clamped, manualOverride: false };
-
-      const manualTotal = userShots
-        .filter((shot, idx) => idx !== index && shot.manualOverride)
-        .reduce((sum, shot) => sum + shot.percentage, 0);
-
-      const adjustable = userShots.filter((shot, idx) => idx !== index && !shot.manualOverride);
-      const adjustableTotal = adjustable.reduce((sum, shot) => sum + shot.percentage, 0);
-      const available = Math.max(0, 100 - clamped - manualTotal);
-
-      const rebalanced = userShots.map((shot, idx) => {
-        if (idx === index || shot.manualOverride) return shot;
-        if (adjustable.length === 0) return shot;
-        if (adjustableTotal <= 0) {
-          return { ...shot, percentage: available / adjustable.length };
-        }
-        return { ...shot, percentage: (shot.percentage / adjustableTotal) * available };
-      });
-
-      const distributed = rebalance(prev.shotCount, rebalanced);
-      return { ...prev, shots: syncAnimationCompanion(distributed, prev.animationComplexity, rateCard?.items ?? []) };
-    });
-  }, [rateCard?.items]);
-
-  const updateQuantity = useCallback((index: number, quantity: number) => {
-    setState((prev) => {
-      const nextQty = Math.max(0, quantity);
-      const userShots = prev.shots.filter((s) => !s.is_companion).map((shot, idx) => {
-        if (idx !== index) return shot;
-        const percentage = prev.shotCount > 0 ? (nextQty / prev.shotCount) * 100 : 0;
-        return { ...shot, quantity: nextQty, percentage, manualOverride: true };
-      });
-      const rebalanced = rebalance(prev.shotCount, userShots);
-      return { ...prev, shots: syncAnimationCompanion(rebalanced, prev.animationComplexity, rateCard?.items ?? []) };
-    });
-  }, [rateCard?.items]);
-
-  const unlockManualQuantity = useCallback((index: number) => {
-    setState((prev) => {
-      const userShots = prev.shots.filter((s) => !s.is_companion);
-      if (!userShots[index]?.manualOverride) return prev;
-
-      const shots = userShots.map((shot, idx) =>
-        idx === index ? { ...shot, manualOverride: false } : shot,
-      );
-
-      const rebalanced = rebalance(prev.shotCount, shots);
-      return { ...prev, shots: syncAnimationCompanion(rebalanced, prev.animationComplexity, rateCard?.items ?? []) };
-    });
-  }, [rateCard?.items]);
-
-  const updateEfficiency = useCallback((index: number, multiplier: number) => {
-    setState((prev) => ({
-      ...prev,
-      shots: prev.shots.map((shot, idx) =>
-        idx === index ? applyShotEfficiency(shot, multiplier) : shot,
-      ),
-    }));
+  const setNotes = useCallback((notes: string) => {
+    setState((prev) => ({ ...prev, notes }));
   }, []);
 
-  const batchSetEfficiency = useCallback((indices: number[], multiplier: number) => {
-    const targetSet = new Set(indices);
-    setState((prev) => ({
-      ...prev,
-      shots: prev.shots.map((shot, idx) =>
-        targetSet.has(idx) ? applyShotEfficiency(shot, multiplier) : shot,
-      ),
-    }));
-  }, []);
+  // ─── Module-level callbacks ───
 
-  const addShot = useCallback((shotType: string, baseHours: number) => {
+  const addModule = useCallback(
+    (name?: string) => {
+      setState((prev) => {
+        const nextName = name ?? `Film ${prev.modules.length + 1}`;
+        const newModule: BuilderModule = {
+          id: generateModuleId(),
+          name: nextName,
+          moduleType: 'film',
+          duration: 60,
+          shotCount: calcShotCount(60),
+          shots: [],
+          animationComplexity: 'regular',
+        };
+        return { ...prev, modules: [...prev.modules, newModule] };
+      });
+    },
+    [],
+  );
+
+  const removeModule = useCallback((moduleIdx: number) => {
     setState((prev) => {
-      const userShots = prev.shots.filter((s) => !s.is_companion);
-      const newShot: BuilderShot = {
-        shot_type: shotType,
-        percentage: 0,
-        quantity: 0,
-        base_hours_each: baseHours,
-        efficiency_multiplier: 1,
-        adjusted_hours: 0,
-        sort_order: userShots.length,
-        selected: false,
-        manualOverride: false,
+      if (prev.modules.length <= 1) return prev; // always keep at least one
+      return {
+        ...prev,
+        modules: prev.modules.filter((_, i) => i !== moduleIdx),
       };
-
-      const nextShots = [...userShots, newShot];
-      const equalPct = 100 / nextShots.length;
-      const spread = nextShots.map((shot) =>
-        shot.manualOverride ? shot : { ...shot, percentage: equalPct },
-      );
-      const rebalanced = rebalance(prev.shotCount, spread);
-      return { ...prev, shots: syncAnimationCompanion(rebalanced, prev.animationComplexity, rateCard?.items ?? []) };
     });
-  }, [rateCard?.items]);
+  }, []);
 
-  const removeShot = useCallback((index: number) => {
-    setState((prev) => {
-      const userShots = prev.shots.filter((s) => !s.is_companion);
-      const shots = userShots
-        .filter((_, idx) => idx !== index)
-        .map((shot, idx) => ({ ...shot, sort_order: idx }));
-      const rebalanced = rebalance(prev.shotCount, shots);
-      return { ...prev, shots: syncAnimationCompanion(rebalanced, prev.animationComplexity, rateCard?.items ?? []) };
-    });
-  }, [rateCard?.items]);
+  const updateModuleName = useCallback((moduleIdx: number, name: string) => {
+    setState((prev) => ({
+      ...prev,
+      modules: updateModuleAt(prev.modules, moduleIdx, (m) => ({ ...m, name })),
+    }));
+  }, []);
+
+  // ─── Module-scoped shot callbacks ───
+
+  const setDuration = useCallback(
+    (moduleIdx: number, duration: number) => {
+      setState((prev) => {
+        const updated = {
+          ...prev,
+          modules: updateModuleAt(prev.modules, moduleIdx, (mod) => {
+            const sc = calcShotCount(duration);
+            const userShots = mod.shots.filter((s) => !s.is_companion);
+            const rebalanced = rebalance(sc, userShots);
+            const shots = syncAnimationCompanion(
+              rebalanced,
+              mod.animationComplexity,
+              rateCard?.items ?? [],
+            );
+            return { ...mod, duration, shotCount: sc, shots };
+          }),
+        };
+
+        const newTotalDuration = updated.modules.reduce((s, m) => s + m.duration, 0);
+        const poolBudgetHours =
+          prev.mode === 'budget' && prev.budgetAmount === null
+            ? newTotalDuration * (rateCard?.hours_per_second ?? 0)
+            : prev.poolBudgetHours;
+
+        return { ...updated, poolBudgetHours };
+      });
+    },
+    [rateCard?.hours_per_second, rateCard?.items],
+  );
+
+  const setPercentage = useCallback(
+    (moduleIdx: number, index: number, percentage: number) => {
+      setState((prev) => ({
+        ...prev,
+        modules: updateModuleAt(prev.modules, moduleIdx, (mod) => {
+          const clamped = Math.max(0, Math.min(100, percentage));
+          const userShots = [...mod.shots.filter((s) => !s.is_companion)];
+          const current = userShots[index];
+          if (!current) return mod;
+
+          userShots[index] = { ...current, percentage: clamped, manualOverride: false };
+
+          const manualTotal = userShots
+            .filter((shot, idx) => idx !== index && shot.manualOverride)
+            .reduce((sum, shot) => sum + shot.percentage, 0);
+
+          const adjustable = userShots.filter(
+            (shot, idx) => idx !== index && !shot.manualOverride,
+          );
+          const adjustableTotal = adjustable.reduce((sum, shot) => sum + shot.percentage, 0);
+          const available = Math.max(0, 100 - clamped - manualTotal);
+
+          const rebalanced = userShots.map((shot, idx) => {
+            if (idx === index || shot.manualOverride) return shot;
+            if (adjustable.length === 0) return shot;
+            if (adjustableTotal <= 0) {
+              return { ...shot, percentage: available / adjustable.length };
+            }
+            return { ...shot, percentage: (shot.percentage / adjustableTotal) * available };
+          });
+
+          const distributed = rebalance(mod.shotCount, rebalanced);
+          const shots = syncAnimationCompanion(
+            distributed,
+            mod.animationComplexity,
+            rateCard?.items ?? [],
+          );
+          return { ...mod, shots };
+        }),
+      }));
+    },
+    [rateCard?.items],
+  );
+
+  const updateQuantity = useCallback(
+    (moduleIdx: number, index: number, quantity: number) => {
+      setState((prev) => ({
+        ...prev,
+        modules: updateModuleAt(prev.modules, moduleIdx, (mod) => {
+          const nextQty = Math.max(0, quantity);
+          const userShots = mod.shots.filter((s) => !s.is_companion).map((shot, idx) => {
+            if (idx !== index) return shot;
+            const pct = mod.shotCount > 0 ? (nextQty / mod.shotCount) * 100 : 0;
+            return { ...shot, quantity: nextQty, percentage: pct, manualOverride: true };
+          });
+          const rebalanced = rebalance(mod.shotCount, userShots);
+          const shots = syncAnimationCompanion(
+            rebalanced,
+            mod.animationComplexity,
+            rateCard?.items ?? [],
+          );
+          return { ...mod, shots };
+        }),
+      }));
+    },
+    [rateCard?.items],
+  );
+
+  const unlockManualQuantity = useCallback(
+    (moduleIdx: number, index: number) => {
+      setState((prev) => ({
+        ...prev,
+        modules: updateModuleAt(prev.modules, moduleIdx, (mod) => {
+          const userShots = mod.shots.filter((s) => !s.is_companion);
+          if (!userShots[index]?.manualOverride) return mod;
+
+          const updated = userShots.map((shot, idx) =>
+            idx === index ? { ...shot, manualOverride: false } : shot,
+          );
+          const rebalanced = rebalance(mod.shotCount, updated);
+          const shots = syncAnimationCompanion(
+            rebalanced,
+            mod.animationComplexity,
+            rateCard?.items ?? [],
+          );
+          return { ...mod, shots };
+        }),
+      }));
+    },
+    [rateCard?.items],
+  );
+
+  const updateEfficiency = useCallback(
+    (moduleIdx: number, index: number, multiplier: number) => {
+      setState((prev) => ({
+        ...prev,
+        modules: updateModuleAt(prev.modules, moduleIdx, (mod) => ({
+          ...mod,
+          shots: mod.shots.map((shot, idx) =>
+            idx === index ? applyShotEfficiency(shot, multiplier) : shot,
+          ),
+        })),
+      }));
+    },
+    [],
+  );
+
+  const batchSetEfficiency = useCallback(
+    (moduleIdx: number, indices: number[], multiplier: number) => {
+      const targetSet = new Set(indices);
+      setState((prev) => ({
+        ...prev,
+        modules: updateModuleAt(prev.modules, moduleIdx, (mod) => ({
+          ...mod,
+          shots: mod.shots.map((shot, idx) =>
+            targetSet.has(idx) ? applyShotEfficiency(shot, multiplier) : shot,
+          ),
+        })),
+      }));
+    },
+    [],
+  );
+
+  const addShot = useCallback(
+    (moduleIdx: number, shotType: string, baseHours: number) => {
+      setState((prev) => ({
+        ...prev,
+        modules: updateModuleAt(prev.modules, moduleIdx, (mod) => {
+          const userShots = mod.shots.filter((s) => !s.is_companion);
+          const newShot: BuilderShot = {
+            shot_type: shotType,
+            percentage: 0,
+            quantity: 0,
+            base_hours_each: baseHours,
+            efficiency_multiplier: 1,
+            adjusted_hours: 0,
+            sort_order: userShots.length,
+            selected: false,
+            manualOverride: false,
+          };
+
+          const nextShots = [...userShots, newShot];
+          const equalPct = 100 / nextShots.length;
+          const spread = nextShots.map((shot) =>
+            shot.manualOverride ? shot : { ...shot, percentage: equalPct },
+          );
+          const rebalanced = rebalance(mod.shotCount, spread);
+          const shots = syncAnimationCompanion(
+            rebalanced,
+            mod.animationComplexity,
+            rateCard?.items ?? [],
+          );
+          return { ...mod, shots };
+        }),
+      }));
+    },
+    [rateCard?.items],
+  );
+
+  const removeShot = useCallback(
+    (moduleIdx: number, index: number) => {
+      setState((prev) => ({
+        ...prev,
+        modules: updateModuleAt(prev.modules, moduleIdx, (mod) => {
+          const userShots = mod.shots.filter((s) => !s.is_companion);
+          const remaining = userShots
+            .filter((_, idx) => idx !== index)
+            .map((shot, idx) => ({ ...shot, sort_order: idx }));
+          const rebalanced = rebalance(mod.shotCount, remaining);
+          const shots = syncAnimationCompanion(
+            rebalanced,
+            mod.animationComplexity,
+            rateCard?.items ?? [],
+          );
+          return { ...mod, shots };
+        }),
+      }));
+    },
+    [rateCard?.items],
+  );
 
   const applyTemplate = useCallback(
-    (template: FilmTemplateWithShots) => {
+    (moduleIdx: number, template: FilmTemplateWithShots) => {
       const rateMap = new Map(
         (rateCard?.items ?? []).map((item) => [item.shot_type.toLowerCase(), Number(item.hours)]),
       );
 
-      setState((prev) => {
-        const fromTemplate: BuilderShot[] = template.shots.map((shot, index) => ({
-          shot_type: shot.shot_type,
-          percentage: Number(shot.percentage),
-          quantity: 0,
-          base_hours_each: Number(rateMap.get(shot.shot_type.toLowerCase()) ?? 0),
-          efficiency_multiplier: Number(shot.efficiency_multiplier),
-          adjusted_hours: 0,
-          sort_order: index,
-          selected: false,
-          manualOverride: false,
-        }));
+      setState((prev) => ({
+        ...prev,
+        modules: updateModuleAt(prev.modules, moduleIdx, (mod) => {
+          const fromTemplate: BuilderShot[] = template.shots.map((shot, index) => ({
+            shot_type: shot.shot_type,
+            percentage: Number(shot.percentage),
+            quantity: 0,
+            base_hours_each: Number(rateMap.get(shot.shot_type.toLowerCase()) ?? 0),
+            efficiency_multiplier: Number(shot.efficiency_multiplier),
+            adjusted_hours: 0,
+            sort_order: index,
+            selected: false,
+            manualOverride: false,
+          }));
 
-        // Use CURRENT duration/shotCount, not template's
-        const distributed = rebalance(prev.shotCount, fromTemplate);
-
-        return { ...prev, shots: syncAnimationCompanion(distributed, prev.animationComplexity, rateCard?.items ?? []) };
-      });
+          const distributed = rebalance(mod.shotCount, fromTemplate);
+          const shots = syncAnimationCompanion(
+            distributed,
+            mod.animationComplexity,
+            rateCard?.items ?? [],
+          );
+          return { ...mod, shots };
+        }),
+      }));
     },
     [rateCard?.items],
   );
 
   const setAnimationComplexity = useCallback(
-    (complexity: 'regular' | 'complex') => {
-      setState((prev) => {
-        const userShots = prev.shots.filter((s) => !s.is_companion);
-        const shots = syncAnimationCompanion(userShots, complexity, rateCard?.items ?? []);
-        return { ...prev, animationComplexity: complexity, shots };
-      });
+    (moduleIdx: number, complexity: 'regular' | 'complex') => {
+      setState((prev) => ({
+        ...prev,
+        modules: updateModuleAt(prev.modules, moduleIdx, (mod) => {
+          const userShots = mod.shots.filter((s) => !s.is_companion);
+          const shots = syncAnimationCompanion(userShots, complexity, rateCard?.items ?? []);
+          return { ...mod, animationComplexity: complexity, shots };
+        }),
+      }));
     },
     [rateCard?.items],
   );
 
   const setAnimationOverride = useCallback(
-    (index: number, override: 'regular' | 'complex' | null) => {
-      setState((prev) => {
-        const userShots = prev.shots.filter((s) => !s.is_companion);
-        const updated = userShots.map((shot, idx) =>
-          idx === index ? { ...shot, animation_override: override } : shot,
-        );
-        const shots = syncAnimationCompanion(updated, prev.animationComplexity, rateCard?.items ?? []);
-        return { ...prev, shots };
-      });
+    (moduleIdx: number, index: number, override: 'regular' | 'complex' | null) => {
+      setState((prev) => ({
+        ...prev,
+        modules: updateModuleAt(prev.modules, moduleIdx, (mod) => {
+          const userShots = mod.shots.filter((s) => !s.is_companion);
+          const updated = userShots.map((shot, idx) =>
+            idx === index ? { ...shot, animation_override: override } : shot,
+          );
+          const shots = syncAnimationCompanion(
+            updated,
+            mod.animationComplexity,
+            rateCard?.items ?? [],
+          );
+          return { ...mod, shots };
+        }),
+      }));
     },
     [rateCard?.items],
   );
 
-  const setNotes = useCallback((notes: string) => {
-    setState((prev) => ({ ...prev, notes }));
-  }, []);
-
-  const toggleShotSelection = useCallback((index: number) => {
+  const toggleShotSelection = useCallback((moduleIdx: number, index: number) => {
     setState((prev) => ({
       ...prev,
-      shots: prev.shots.map((shot, idx) =>
-        idx === index ? { ...shot, selected: !shot.selected } : shot,
+      modules: updateModuleAt(prev.modules, moduleIdx, (mod) => ({
+        ...mod,
+        shots: mod.shots.map((shot, idx) =>
+          idx === index ? { ...shot, selected: !shot.selected } : shot,
+        ),
+      })),
+    }));
+  }, []);
+
+  const selectAll = useCallback((moduleIdx: number) => {
+    setState((prev) => ({
+      ...prev,
+      modules: updateModuleAt(prev.modules, moduleIdx, (mod) => ({
+        ...mod,
+        shots: mod.shots.map((shot) => ({ ...shot, selected: true })),
+      })),
+    }));
+  }, []);
+
+  const deselectAll = useCallback((moduleIdx: number) => {
+    setState((prev) => ({
+      ...prev,
+      modules: updateModuleAt(prev.modules, moduleIdx, (mod) => ({
+        ...mod,
+        shots: mod.shots.map((shot) => ({ ...shot, selected: false })),
+      })),
+    }));
+  }, []);
+
+  // ─── Line item callbacks ───
+
+  const addLineItem = useCallback((item: Omit<BuilderLineItem, 'sort_order'>) => {
+    setState((prev) => ({
+      ...prev,
+      lineItems: [...prev.lineItems, { ...item, sort_order: prev.lineItems.length }],
+    }));
+  }, []);
+
+  const updateLineItem = useCallback((index: number, updates: Partial<BuilderLineItem>) => {
+    setState((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.map((item, idx) =>
+        idx === index ? { ...item, ...updates } : item,
       ),
     }));
   }, []);
 
-  const selectAll = useCallback(() => {
+  const removeLineItem = useCallback((index: number) => {
     setState((prev) => ({
       ...prev,
-      shots: prev.shots.map((shot) => ({ ...shot, selected: true })),
+      lineItems: prev.lineItems
+        .filter((_, idx) => idx !== index)
+        .map((item, idx) => ({ ...item, sort_order: idx })),
     }));
   }, []);
 
-  const deselectAll = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      shots: prev.shots.map((shot) => ({ ...shot, selected: false })),
-    }));
-  }, []);
+  // ─── Payload ───
 
   const payload = useMemo(
     () => ({
       mode: state.mode,
-      duration_seconds: state.duration,
+      duration_seconds: totalDuration,
       hourly_rate: state.hourlyRate,
       pool_budget_hours: state.mode === 'budget' ? effectivePoolBudgetHours : null,
       pool_budget_amount: state.mode === 'budget' ? effectiveBudgetAmount : null,
       notes: state.notes || undefined,
-      shots: state.shots.map((shot, index) => ({
-        shot_type: shot.shot_type,
-        percentage: shot.percentage,
-        quantity: shot.quantity,
-        base_hours_each: shot.base_hours_each,
-        efficiency_multiplier: shot.efficiency_multiplier,
+      modules: state.modules.map((mod, midx) => ({
+        id: mod.id,
+        name: mod.name,
+        module_type: mod.moduleType,
+        duration_seconds: mod.duration,
+        animation_complexity: mod.animationComplexity,
+        sort_order: midx,
+        shots: mod.shots.map((shot, sidx) => ({
+          shot_type: shot.shot_type,
+          percentage: shot.percentage,
+          quantity: shot.quantity,
+          base_hours_each: shot.base_hours_each,
+          efficiency_multiplier: shot.efficiency_multiplier,
+          sort_order: sidx,
+          is_companion: shot.is_companion ?? false,
+          animation_override: shot.animation_override ?? null,
+        })),
+      })),
+      line_items: state.lineItems.map((item, index) => ({
+        name: item.name,
+        category: item.category,
+        hours_each: item.hours_each,
+        quantity: item.quantity,
+        notes: item.notes || null,
         sort_order: index,
-        is_companion: shot.is_companion ?? false,
-        animation_override: shot.animation_override ?? null,
       })),
     }),
     [
-      state.duration,
-      state.hourlyRate,
       state.mode,
+      state.modules,
+      state.lineItems,
+      state.hourlyRate,
       state.notes,
-      state.shots,
+      totalDuration,
       effectivePoolBudgetHours,
       effectiveBudgetAmount,
     ],
@@ -563,25 +865,30 @@ export function useBuilderState(
 
   return {
     mode: state.mode,
-    duration: state.duration,
-    shotCount: state.shotCount,
-    shots: state.shots,
+    modules: state.modules,
+    lineItems: state.lineItems,
     notes: state.notes,
     showPricing: state.showPricing,
     hourlyRate: state.hourlyRate,
-    animationComplexity: state.animationComplexity,
     budgetAmount: state.mode === 'budget' ? effectiveBudgetAmount : null,
     poolBudgetHours: effectivePoolBudgetHours,
+    totalDuration,
+    totalShotCount,
     editingHours,
     editingHoursPer30s,
     totalShotHours,
+    totalLineItemHours,
     totalHours,
     remaining,
     setMode,
     setShowPricing,
-    setDuration,
     setHourlyRate,
     setBudgetAmount,
+    setNotes,
+    addModule,
+    removeModule,
+    updateModuleName,
+    setDuration,
     setPercentage,
     updateQuantity,
     unlockManualQuantity,
@@ -592,10 +899,12 @@ export function useBuilderState(
     applyTemplate,
     setAnimationComplexity,
     setAnimationOverride,
-    setNotes,
     toggleShotSelection,
     selectAll,
     deselectAll,
+    addLineItem,
+    updateLineItem,
+    removeLineItem,
     payload,
   };
 }

@@ -6,6 +6,7 @@ import { formatCurrency } from '@/lib/currency';
 interface TotalsSummaryProps {
   totalShotHours: number;
   editingHours: number;
+  totalLineItemHours: number;
   totalHours: number;
   poolBudgetHours: number | null;
   remaining: number | null;
@@ -16,6 +17,7 @@ interface TotalsSummaryProps {
 export function TotalsSummary({
   totalShotHours,
   editingHours,
+  totalLineItemHours,
   totalHours,
   poolBudgetHours,
   remaining,
@@ -42,6 +44,14 @@ export function TotalsSummary({
           showPricing={showPricing}
           cost={editingHours * hourlyRate}
         />
+        {totalLineItemHours > 0 && (
+          <Row
+            label="Additional Items"
+            hours={totalLineItemHours}
+            showPricing={showPricing}
+            cost={totalLineItemHours * hourlyRate}
+          />
+        )}
 
         <Separator />
 

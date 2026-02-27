@@ -126,9 +126,24 @@ export interface VersionShot {
 
 export const ANIMATION_COMPANION_TYPE = '__animation_companion';
 
+export type LineItemCategory = 'service' | 'deliverable' | 'pre_production';
+
+export interface VersionLineItem {
+  id: string;
+  version_id: string;
+  name: string;
+  category: LineItemCategory;
+  hours_each: number;
+  quantity: number;
+  total_hours: number;
+  notes: string | null;
+  sort_order: number;
+}
+
 export interface QuoteVersionWithShots extends QuoteVersion {
   shots: VersionShot[];
   modules?: VersionModule[];
+  line_items?: VersionLineItem[];
 }
 
 export interface QuoteWithVersions extends Quote {

@@ -48,6 +48,18 @@ const existingVersion: QuoteVersionWithShots = {
   notes: null,
   created_by: 'user-1',
   created_at: '2026-02-20T08:00:00.000Z',
+  modules: [
+    {
+      id: 'mod-1',
+      version_id: 'version-1',
+      name: 'Film 1',
+      module_type: 'film',
+      duration_seconds: 60,
+      shot_count: 15,
+      animation_complexity: 'regular',
+      sort_order: 0,
+    },
+  ],
   shots: [
     {
       id: 'shot-1',
@@ -59,6 +71,9 @@ const existingVersion: QuoteVersionWithShots = {
       efficiency_multiplier: 1,
       adjusted_hours: 18,
       sort_order: 0,
+      module_id: 'mod-1',
+      is_companion: false,
+      animation_override: null,
     },
     {
       id: 'shot-2',
@@ -70,6 +85,9 @@ const existingVersion: QuoteVersionWithShots = {
       efficiency_multiplier: 1,
       adjusted_hours: 18,
       sort_order: 1,
+      module_id: 'mod-1',
+      is_companion: false,
+      animation_override: null,
     },
   ],
 };
@@ -78,6 +96,13 @@ const existingVersionAt90s: QuoteVersionWithShots = {
   ...existingVersion,
   duration_seconds: 90,
   shot_count: 23,
+  modules: [
+    {
+      ...existingVersion.modules![0],
+      duration_seconds: 90,
+      shot_count: 23,
+    },
+  ],
   shots: existingVersion.shots.map((s) => ({ ...s })),
 };
 
@@ -86,10 +111,10 @@ describe('applyTemplate does not override duration', () => {
     const { result } = renderHook(() =>
       useBuilderState(rateCard, existingVersionAt90s, 'retainer'),
     );
-    expect(result.current.duration).toBe(90);
+    expect(result.current.modules[0].duration).toBe(90);
 
     act(() => {
-      result.current.applyTemplate({
+      result.current.applyTemplate(0, {
         id: 'tpl-1',
         name: 'Product Film',
         duration_seconds: 60,
@@ -119,8 +144,8 @@ describe('applyTemplate does not override duration', () => {
       });
     });
 
-    expect(result.current.duration).toBe(90);
-    const userShots = result.current.shots.filter((s) => !s.is_companion);
+    expect(result.current.modules[0].duration).toBe(90);
+    const userShots = result.current.modules[0].shots.filter((s) => !s.is_companion);
     expect(userShots.map((s) => s.shot_type)).toEqual(['Wide', 'Close']);
   });
 });
@@ -130,23 +155,71 @@ describe('useBuilderState manual quantity unlock', () => {
     const { result } = renderHook(() => useBuilderState(rateCard, existingVersion, 'retainer'));
 
     act(() => {
-      result.current.updateQuantity(0, 5);
+      result.current.updateQuantity(0, 0, 5);
     });
 
-    expect(result.current.shots[0].manualOverride).toBe(true);
-    expect(result.current.shots[0].quantity).toBe(5);
+    const mod = result.current.modules[0];
+    expect(mod.shots[0].manualOverride).toBe(true);
+    expect(mod.shots[0].quantity).toBe(5);
 
     act(() => {
-      result.current.setDuration(120);
+      result.current.setDuration(0, 120);
     });
 
-    expect(result.current.shots[0].quantity).toBe(5);
+    expect(result.current.modules[0].shots[0].quantity).toBe(5);
 
     act(() => {
-      result.current.unlockManualQuantity(0);
+      result.current.unlockManualQuantity(0, 0);
     });
 
-    expect(result.current.shots[0].manualOverride).toBe(false);
-    expect(result.current.shots[0].quantity).toBe(10);
+    const modAfter = result.current.modules[0];
+    expect(modAfter.shots[0].manualOverride).toBe(false);
+    expect(modAfter.shots[0].quantity).toBe(10);
+  });
+});
+
+describe('multi-film modules', () => {
+  it('adds and removes modules', () => {
+    const { result } = renderHook(() => useBuilderState(rateCard, existingVersion, 'retainer'));
+
+    expect(result.current.modules).toHaveLength(1);
+
+    act(() => {
+      result.current.addModule('Film 2');
+    });
+
+    expect(result.current.modules).toHaveLength(2);
+    expect(result.current.modules[1].name).toBe('Film 2');
+    expect(result.current.modules[1].duration).toBe(60);
+
+    act(() => {
+      result.current.removeModule(1);
+    });
+
+    expect(result.current.modules).toHaveLength(1);
+  });
+
+  it('does not remove the last module', () => {
+    const { result } = renderHook(() => useBuilderState(rateCard, existingVersion, 'retainer'));
+
+    act(() => {
+      result.current.removeModule(0);
+    });
+
+    expect(result.current.modules).toHaveLength(1);
+  });
+
+  it('computes aggregates across modules', () => {
+    const { result } = renderHook(() => useBuilderState(rateCard, existingVersion, 'retainer'));
+
+    act(() => {
+      result.current.addModule('Film 2');
+    });
+
+    act(() => {
+      result.current.setDuration(1, 30);
+    });
+
+    expect(result.current.totalDuration).toBe(60 + 30);
   });
 });

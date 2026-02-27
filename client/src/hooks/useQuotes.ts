@@ -88,6 +88,25 @@ export interface QuoteShotPayload {
   sort_order: number;
 }
 
+export interface QuoteLineItemPayload {
+  name: string;
+  category: 'service' | 'deliverable' | 'pre_production';
+  hours_each: number;
+  quantity: number;
+  notes?: string | null;
+  sort_order: number;
+}
+
+export interface QuoteModulePayload {
+  id?: string;
+  name: string;
+  module_type: 'film' | 'supplementary';
+  duration_seconds: number;
+  animation_complexity: 'regular' | 'complex';
+  sort_order: number;
+  shots: QuoteShotPayload[];
+}
+
 export interface QuoteVersionPayload {
   mode?: QuoteMode;
   duration_seconds: number;
@@ -95,7 +114,9 @@ export interface QuoteVersionPayload {
   pool_budget_hours?: number | null;
   pool_budget_amount?: number | null;
   notes?: string;
-  shots: QuoteShotPayload[];
+  modules?: QuoteModulePayload[];
+  shots?: QuoteShotPayload[];
+  line_items?: QuoteLineItemPayload[];
 }
 
 export function useCreateVersion() {
