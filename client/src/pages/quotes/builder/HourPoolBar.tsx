@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { formatCurrency } from '@/lib/currency';
 
 interface HourPoolBarProps {
   used: number;
@@ -38,7 +39,7 @@ export function HourPoolBar({
             {used.toFixed(1)} / {budget.toFixed(1)} hrs
             {showPricing && (
               <span className="ml-1 text-xs text-muted-foreground">
-                (${usedCost.toFixed(0)} / ${budgetCost.toFixed(0)})
+                ({formatCurrency(usedCost)} / {formatCurrency(budgetCost)})
               </span>
             )}
           </span>

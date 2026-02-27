@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Clock, Film, FileText } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import type { QuoteVersionWithShots } from '../../../../shared/types';
@@ -9,9 +10,10 @@ interface VersionCardProps {
   version: QuoteVersionWithShots;
   quoteId: string;
   projectId: string;
+  isLatest?: boolean;
 }
 
-export function VersionCard({ version, quoteId, projectId }: VersionCardProps) {
+export function VersionCard({ version, quoteId, projectId, isLatest }: VersionCardProps) {
   const navigate = useNavigate();
 
   const usagePercent =
@@ -31,7 +33,14 @@ export function VersionCard({ version, quoteId, projectId }: VersionCardProps) {
     >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">Version {version.version_number}</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">Version {version.version_number}</CardTitle>
+            {isLatest && (
+              <Badge variant="default" className="bg-sb-brand text-white text-[10px]">
+                Latest
+              </Badge>
+            )}
+          </div>
           <span className="text-xs text-muted-foreground">
             {format(new Date(version.created_at), 'dd MMM yyyy, HH:mm')}
           </span>

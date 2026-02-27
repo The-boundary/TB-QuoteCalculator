@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, Plus } from 'lucide-react';
+import { ArrowLeft, ChevronDown, LayoutGrid, List, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,14 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useCreateVersion, useQuote, useUpdateQuoteStatus } from '@/hooks/useQuotes';
 import { VersionCard } from './VersionCard';
 import { STATUS_CONFIG } from './statusConfig';
@@ -48,6 +56,7 @@ export function QuoteDetailPage() {
   const { data: quote, isLoading } = useQuote(quoteId);
   const updateStatus = useUpdateQuoteStatus();
   const createVersion = useCreateVersion();
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
 
   const sortedVersions = useMemo(
     () => [...(quote?.versions ?? [])].sort((a, b) => b.version_number - a.version_number),
@@ -186,16 +195,87 @@ export function QuoteDetailPage() {
       {sortedVersions.length === 0 ? (
         <p className="text-sm text-muted-foreground">No versions yet.</p>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sortedVersions.map((version) => (
-            <VersionCard
-              key={version.id}
-              version={version}
-              quoteId={quote.id}
-              projectId={projectId}
-            />
-          ))}
-        </div>
+        <>
+          <div className="flex items-center gap-1">
+            <Button
+              variant={viewMode === 'cards' ? 'secondary' : 'ghost'}
+              size="icon-sm"
+              onClick={() => setViewMode('cards')}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+              size="icon-sm"
+              onClick={() => setViewMode('list')}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {viewMode === 'cards' ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {sortedVersions.map((version, index) => (
+                <VersionCard
+                  key={version.id}
+                  version={version}
+                  quoteId={quote.id}
+                  projectId={projectId}
+                  isLatest={index === 0}
+                />
+              ))}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Version</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Shots</TableHead>
+                  <TableHead>Total Hours</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="w-[80px]" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedVersions.map((version, index) => (
+                  <TableRow key={version.id}>
+                    <TableCell className="font-medium">
+                      V{version.version_number}
+                      {index === 0 && (
+                        <Badge
+                          variant="default"
+                          className="ml-2 bg-sb-brand text-white text-[10px]"
+                        >
+                          Latest
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{version.duration_seconds}s</TableCell>
+                    <TableCell>{version.shots.length}</TableCell>
+                    <TableCell>{version.total_hours} hrs</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {format(new Date(version.created_at), 'dd MMM yyyy')}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          navigate(
+                            `/projects/${projectId}/quotes/${quoteId}/versions/${version.id}/build`,
+                          )
+                        }
+                      >
+                        Edit
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </>
       )}
     </div>
   );

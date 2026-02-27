@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { formatCurrency } from '@/lib/currency';
 
 interface TotalsSummaryProps {
   totalShotHours: number;
@@ -10,10 +11,6 @@ interface TotalsSummaryProps {
   remaining: number | null;
   showPricing: boolean;
   hourlyRate: number;
-}
-
-function formatCurrency(value: number): string {
-  return `$${value.toFixed(0)}`;
 }
 
 export function TotalsSummary({

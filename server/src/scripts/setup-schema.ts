@@ -175,7 +175,7 @@ async function run() {
     if (existingRateCard.length === 0) {
       const { rows: inserted } = await client.query(`
         INSERT INTO rate_cards (name, is_default, hours_per_second, editing_hours_per_30s, hourly_rate)
-        VALUES ('DHRE 2025', true, 17.33, 100, 125)
+        VALUES ('DHRE 2025', true, 17.33, 100, 94.60)
         RETURNING id
       `);
 

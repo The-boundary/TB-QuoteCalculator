@@ -370,8 +370,6 @@ export function useBuilderState(
 
   const applyTemplate = useCallback(
     (template: FilmTemplateWithShots) => {
-      const duration = template.duration_seconds;
-      const shotCount = calcShotCount(duration);
       const rateMap = new Map(
         (rateCard?.items ?? []).map((item) => [item.shot_type.toLowerCase(), Number(item.hours)]),
       );
@@ -389,17 +387,13 @@ export function useBuilderState(
           manualOverride: false,
         }));
 
-        const distributed = rebalance(shotCount, fromTemplate);
+        // Use CURRENT duration/shotCount, not template's
+        const distributed = rebalance(prev.shotCount, fromTemplate);
 
-        const poolBudgetHours =
-          prev.mode === 'budget' && prev.budgetAmount === null
-            ? duration * (rateCard?.hours_per_second ?? 0)
-            : prev.poolBudgetHours;
-
-        return { ...prev, duration, shotCount, shots: distributed, poolBudgetHours };
+        return { ...prev, shots: distributed };
       });
     },
-    [rateCard?.items, rateCard?.hours_per_second],
+    [rateCard?.items],
   );
 
   const setNotes = useCallback((notes: string) => {

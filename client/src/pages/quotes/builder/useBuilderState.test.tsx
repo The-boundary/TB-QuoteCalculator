@@ -74,6 +74,56 @@ const existingVersion: QuoteVersionWithShots = {
   ],
 };
 
+const existingVersionAt90s: QuoteVersionWithShots = {
+  ...existingVersion,
+  duration_seconds: 90,
+  shot_count: 23,
+  shots: existingVersion.shots.map((s) => ({ ...s })),
+};
+
+describe('applyTemplate does not override duration', () => {
+  it('preserves existing duration when applying a template', () => {
+    const { result } = renderHook(() =>
+      useBuilderState(rateCard, existingVersionAt90s, 'retainer'),
+    );
+    expect(result.current.duration).toBe(90);
+
+    act(() => {
+      result.current.applyTemplate({
+        id: 'tpl-1',
+        name: 'Product Film',
+        duration_seconds: 60,
+        description: null,
+        rate_card_id: null,
+        created_by: null,
+        created_at: '',
+        updated_at: '',
+        shots: [
+          {
+            id: '1',
+            template_id: 'tpl-1',
+            shot_type: 'Wide',
+            percentage: 50,
+            efficiency_multiplier: 1,
+            sort_order: 0,
+          },
+          {
+            id: '2',
+            template_id: 'tpl-1',
+            shot_type: 'Close',
+            percentage: 50,
+            efficiency_multiplier: 1,
+            sort_order: 1,
+          },
+        ],
+      });
+    });
+
+    expect(result.current.duration).toBe(90);
+    expect(result.current.shots.map((s) => s.shot_type)).toEqual(['Wide', 'Close']);
+  });
+});
+
 describe('useBuilderState manual quantity unlock', () => {
   it('returns a manually adjusted shot back to automatic distribution', () => {
     const { result } = renderHook(() => useBuilderState(rateCard, existingVersion, 'retainer'));

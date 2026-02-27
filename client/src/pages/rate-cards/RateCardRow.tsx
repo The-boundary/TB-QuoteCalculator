@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Pencil } from 'lucide-react';
+import { formatCurrency } from '@/lib/currency';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
@@ -53,7 +54,7 @@ export function RateCardRow({ rateCard, isAdmin, onEdit }: RateCardRowProps) {
               <div className="mt-1 flex items-center gap-4 text-sm text-muted-foreground">
                 <span>{rateCard.hours_per_second} hrs/sec</span>
                 <span>{rateCard.editing_hours_per_30s} editing hrs/30s</span>
-                <span>${rateCard.hourly_rate}/hr</span>
+                <span>{formatCurrency(rateCard.hourly_rate)}/hr</span>
               </div>
             </div>
           </div>

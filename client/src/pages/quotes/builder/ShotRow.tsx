@@ -3,6 +3,7 @@ import { Minus, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TableCell, TableRow } from '@/components/ui/table';
+import { formatCurrency } from '@/lib/currency';
 import type { BuilderShot } from './useBuilderState';
 
 interface ShotRowProps {
@@ -112,7 +113,7 @@ export const ShotRow = memo(function ShotRow({
         {shot.adjusted_hours.toFixed(1)}h
         {showPricing && (
           <span className="ml-1 text-xs text-muted-foreground">
-            (${(shot.adjusted_hours * hourlyRate).toFixed(0)})
+            ({formatCurrency(shot.adjusted_hours * hourlyRate)})
           </span>
         )}
       </TableCell>
