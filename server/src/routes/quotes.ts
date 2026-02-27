@@ -707,7 +707,7 @@ router.put('/:id/versions/:versionId', async (req: Request, res: Response) => {
       }
 
       const inputModules = parsed.data.modules;
-      let persistedModules: unknown[] = [];
+      const persistedModules: unknown[] = [];
       let persistedShots: unknown[] = [];
       let allShotRows: MappedShot[] = [];
       let totalShotCountVal = 0;
